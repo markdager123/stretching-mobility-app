@@ -234,7 +234,7 @@ function Tag({ label, color }) {
 function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise, onSaveRoutine, exerciseCompletionCounts }) {
   const [editId, setEditId] = useState(null);
   const [editFields, setEditFields] = useState({});
-  const startEdit = ex => { setEditId(ex.id); setEditFields({reps:ex.reps||"",video:ex.video||"",muscleTags:[...(ex.muscleTags||[])],bodyPosition:ex.bodyPosition||"",type:ex.type||"Stretching"}); };
+  const startEdit = ex => { setEditId(ex.id); setEditFields({reps:ex.type==="Stretching"?(ex.reps||"N/A"):ex.reps||"",video:ex.video||"",muscleTags:[...(ex.muscleTags||[])],bodyPosition:ex.bodyPosition||"",type:ex.type||"Stretching"}); };
   const saveEdit = ex => {
     onUpdateExercise(ex.id, editFields);
     setEditId(null);
@@ -273,22 +273,28 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
               </div>
               {isEditing && (
                 <div style={{padding:"10px 13px 13px",borderTop:"0.5px solid var(--color-border-tertiary)",background:"var(--color-background-secondary)",display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <div style={{gridColumn:"1/-1",marginBottom:4}}>
+                    <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>Type</div>
+                    <select value={editFields.type||"Stretching"} onChange={ev=>setEditFields(p=>({...p,type:ev.target.value}))} style={{width:"100%",fontSize:12}}>
+                      <option>Stretching</option><option>Mobility</option>
+                    </select>
+                  </div>
                   {[["reps","Reps / Duration"],["bodyPosition","Body Position"],["video","Video URL"]].map(([field,label]) => (
                     <div key={field} style={{gridColumn:field==="video"?"1/-1":"auto"}}>
                       <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>{label}</div>
-                      <input value={editFields[field]||""} onChange={e => setEditFields(p=>({...p,[field]:e.target.value}))} style={{width:"100%",boxSizing:"border-box",fontSize:12}}/>
+                      {field==="bodyPosition"
+                        ? <select value={editFields[field]||""} onChange={ev=>setEditFields(p=>({...p,[field]:ev.target.value}))} style={{width:"100%",fontSize:12}}>
+                            <option value="">-- select --</option>
+                            {["Standing","Kneeling","Sitting","On Back","On Stomach"].map(p=><option key={p} value={p}>{p}</option>)}
+                          </select>
+                        : <input value={editFields[field]||""} onChange={e => setEditFields(p=>({...p,[field]:e.target.value}))} style={{width:"100%",boxSizing:"border-box",fontSize:12}}/>}
                     </div>
                   ))}
                   <div style={{gridColumn:"1/-1"}}>
                     <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>Muscles / Joints</div>
                     <MuscleTagPicker value={editFields.muscleTags||[]} onChange={tags=>setEditFields(p=>({...p,muscleTags:tags}))}/>
                   </div>
-                  <div>
-                    <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>Type</div>
-                    <select value={editFields.type||"Stretching"} onChange={ev=>setEditFields(p=>({...p,type:ev.target.value}))} style={{width:"100%",fontSize:12}}>
-                      <option>Stretching</option><option>Mobility</option>
-                    </select>
-                  </div>
+
                   <button onClick={() => saveEdit(ex)} style={{gridColumn:"1/-1",padding:"7px",borderRadius:6,fontSize:13,fontWeight:600,background:S_COLOR,color:"white",border:"none",cursor:"pointer",marginTop:2}}>Save Changes</button>
                 </div>
               )}
@@ -340,7 +346,7 @@ function AddCompletionForm({ allRoutines, onAdd, onClose }) {
 function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount }) {
   const [editing, setEditing] = useState(false);
   const [fields, setFields] = useState({});
-  const start = () => { setEditing(true); setFields({reps:e.reps||"",video:e.video||"",muscleTags:[...(e.muscleTags||[])],bodyPosition:e.bodyPosition||"",favorite:e.favorite||"No",workOn:e.workOn||"No",type:e.type||"Stretching"}); };
+  const start = () => { setEditing(true); setFields({reps:e.type==="Stretching"?(e.reps||"N/A"):e.reps||"",video:e.video||"",muscleTags:[...(e.muscleTags||[])],bodyPosition:e.bodyPosition||"",favorite:e.favorite||"No",workOn:e.workOn||"No",type:e.type||"Stretching"}); };
   const save = () => {
     const updatedFields = {...fields};
     // muscleTags is already set directly from the picker
@@ -366,6 +372,13 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount }) {
       </div>
       ) : (
         <div style={{marginTop:10,background:"var(--color-background-secondary)",borderRadius:8,padding:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          {/* Type selector at top */}
+          <div style={{gridColumn:"1/-1",marginBottom:4}}>
+            <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>Type</div>
+            <select value={fields.type||"Stretching"} onChange={ev=>setFields(p=>({...p,type:ev.target.value}))} style={{width:"100%",fontSize:12}}>
+              <option>Stretching</option><option>Mobility</option>
+            </select>
+          </div>
           {/* Favorite + Work On symbol toggles at top */}
           <div style={{gridColumn:"1/-1",display:"flex",gap:10,marginBottom:4}}>
             <button onClick={()=>setFields(p=>({...p,favorite:p.favorite==="Favorite"?"No":"Favorite"}))} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,fontSize:14,border:"0.5px solid",borderColor:fields.favorite==="Favorite"?"#E8B84B66":"var(--color-border-tertiary)",background:fields.favorite==="Favorite"?"#E8B84B22":"var(--color-background-primary)",cursor:"pointer",transition:"all 0.15s"}}>
@@ -380,19 +393,19 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount }) {
           {[["reps","Reps"],["bodyPosition","Body Position"],["video","Video URL"]].map(([field,label]) => (
             <div key={field} style={{gridColumn:field==="video"?"1/-1":"auto"}}>
               <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>{label}</div>
-              <input value={fields[field]||""} onChange={ev => setFields(p=>({...p,[field]:ev.target.value}))} style={{width:"100%",boxSizing:"border-box",fontSize:12}}/>
+              {field==="bodyPosition"
+                ? <select value={fields[field]||""} onChange={ev=>setFields(p=>({...p,[field]:ev.target.value}))} style={{width:"100%",fontSize:12}}>
+                    <option value="">-- select --</option>
+                    {["Standing","Kneeling","Sitting","On Back","On Stomach"].map(p=><option key={p} value={p}>{p}</option>)}
+                  </select>
+                : <input value={fields[field]||""} onChange={ev => setFields(p=>({...p,[field]:ev.target.value}))} style={{width:"100%",boxSizing:"border-box",fontSize:12}}/>}
             </div>
           ))}
           <div style={{gridColumn:"1/-1"}}>
             <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>Muscles / Joints</div>
             <MuscleTagPicker value={fields.muscleTags||[]} onChange={tags=>setFields(p=>({...p,muscleTags:tags}))}/>
           </div>
-          <div>
-            <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>Type</div>
-            <select value={fields.type||"Stretching"} onChange={ev=>setFields(p=>({...p,type:ev.target.value}))} style={{width:"100%",fontSize:12}}>
-              <option>Stretching</option><option>Mobility</option>
-            </select>
-          </div>
+
 
           <div style={{display:"flex",gap:8,gridColumn:"1/-1"}}>
             <button onClick={save} style={{flex:1,padding:"7px",borderRadius:6,fontSize:13,fontWeight:600,background:S_COLOR,color:"white",border:"none",cursor:"pointer"}}>Save</button>
