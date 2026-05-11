@@ -302,7 +302,7 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                     <span style={{fontSize:15,fontWeight:600,color:DARK.text,lineHeight:1.3,flex:1,minWidth:0}}>{ex.name}</span>
                     <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
                       {ex.favorite==="Favorite"&&<span style={{fontSize:15,color:"#E8B84B"}}>&#9733;</span>}
-                      {ex.workOn==="Work On"&&<span style={{fontSize:14,color:"#e06666"}}>&#128170;</span>}
+                      {ex.workOn==="Work On"&&<span style={{fontSize:12,color:"#e06666"}}>&#128170;</span>}
                       {(exerciseCompletionCounts[ex.id]||0)>0&&<span style={{fontSize:11,color:DARK.text3}}>{exerciseCompletionCounts[ex.id]}&#215;</span>}
                       {ex.video && <a href={ex.video} target="_blank" rel="noreferrer" style={{fontSize:15,color:DARK.text2,textDecoration:"none"}}>&#9654;</a>}
                       <button onClick={() => isEditing ? setEditId(null) : startEdit(ex)} style={{fontSize:11,padding:"2px 8px",borderRadius:5,background:"none",border:"0.5px solid "+DARK.border,color:DARK.text2,cursor:"pointer"}}>{isEditing?"Cancel":"Edit"}</button>
@@ -333,7 +333,7 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                       <span style={{fontSize:12,color:editFields.favorite==="Favorite"?"#C49A00":DARK.text2,fontWeight:editFields.favorite==="Favorite"?600:400}}>Favorite</span>
                     </button>
                     <button onClick={()=>setEditFields(p=>({...p,workOn:p.workOn==="Work On"?"No":"Work On"}))} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 10px",borderRadius:8,border:"0.5px solid "+(editFields.workOn==="Work On"?"#e0666655":DARK.border),background:editFields.workOn==="Work On"?"#e0666622":DARK.bg3,cursor:"pointer"}}>
-                      <span style={{fontSize:14,color:"#e06666"}}>&#128170;</span>
+                      <span style={{fontSize:12,color:"#e06666"}}>&#128170;</span>
                       <span style={{fontSize:12,color:editFields.workOn==="Work On"?"#e06666":DARK.text2,fontWeight:editFields.workOn==="Work On"?600:400}}>Work On</span>
                     </button>
                   </div>
@@ -455,7 +455,7 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount }) {
               <span style={{fontSize:12,color:fields.favorite==="Favorite"?"#C49A00":DARK.text2,fontWeight:fields.favorite==="Favorite"?600:400}}>Favorite</span>
             </button>
             <button onClick={()=>setFields(p=>({...p,workOn:p.workOn==="Work On"?"No":"Work On"}))} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,fontSize:14,border:"0.5px solid",borderColor:fields.workOn==="Work On"?"#8B000066":DARK.border2,background:fields.workOn==="Work On"?"#8B000022":DARK.bg,cursor:"pointer",transition:"all 0.15s"}}>
-              <span style={{fontSize:14,lineHeight:1,color:"#e06666"}}>&#128170;</span>
+              <span style={{fontSize:12,lineHeight:1,color:"#e06666"}}>&#128170;</span>
               <span style={{fontSize:12,color:fields.workOn==="Work On"?"#e06666":DARK.text2,fontWeight:fields.workOn==="Work On"?600:400}}>Work On</span>
             </button>
           </div>
@@ -551,7 +551,7 @@ function AddExerciseForm({ onSave, onClose }) {
           <span style={{fontSize:13,color:favorite==="Favorite"?"#C49A00":DARK.text2,fontWeight:favorite==="Favorite"?600:400}}>Favorite</span>
         </button>
         <button onClick={()=>setWorkOn(v=>v==="Work On"?"No":"Work On")} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,border:"0.5px solid",borderColor:workOn==="Work On"?"#8B000066":DARK.border2,background:workOn==="Work On"?"#8B000022":DARK.bg,cursor:"pointer"}}>
-          <span style={{fontSize:14,color:"#e06666"}}>&#128170;</span>
+          <span style={{fontSize:12,color:"#e06666"}}>&#128170;</span>
           <span style={{fontSize:13,color:workOn==="Work On"?"#e06666":DARK.text2,fontWeight:workOn==="Work On"?600:400}}>Work On</span>
         </button>
       </div>
@@ -739,7 +739,7 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
                   <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                     <span style={{fontSize:15,fontWeight:600,lineHeight:1.3,color:DARK.text}}>{ex.name}</span>
                     {ex.favorite==="Favorite"&&<span style={{fontSize:13,color:"#E8B84B"}}>&#9733;</span>}
-                    {ex.workOn==="Work On"&&<span style={{fontSize:14,color:"#e06666"}}>&#128170;</span>}
+                    {ex.workOn==="Work On"&&<span style={{fontSize:12,color:"#e06666"}}>&#128170;</span>}
                   </div>
                   <div style={{display:"flex",gap:4,marginTop:5,flexWrap:"wrap",alignItems:"center"}}>
                     {(ex.muscleTags||[ex.bodyRegion]).filter(Boolean).map(t => {
@@ -1156,9 +1156,7 @@ export default function App() {
     return weeks;
   }, [completions, allRoutines]);
  // For each type, compute which exercise IDs appeared in the last N completions
-  // last3[type] = Set of exercise IDs in last 3 completions of that type
-  // last6[type] = Set of exercise IDs in last 6 completions of that type
-etion = useCallback((routine, exerciseIds) => {
+  const logCompletion = useCallback((routine, exerciseIds) => {
     const c={id:`n-${Date.now()}`,routineId:routine.id,routineName:routine.name,routineType:routine.type||"",date:new Date().toISOString().split("T")[0],exerciseIds:exerciseIds||[]};
     const updated=[c,...completions]; setCompletions(updated); save(updated,customRoutines,customExercises);
     sbSaveCompletion(c);
@@ -1199,12 +1197,7 @@ etion = useCallback((routine, exerciseIds) => {
     setActiveWorkout({routine,exercises:exs});
   }, [customExercises]);
 
-  const logCompletion = useCallback((routine, exerciseIds) => {
-    const c={id:`n-${Date.now()}`,routineId:routine.id,routineName:routine.name,routineType:routine.type||"",date:new Date().toISOString().split("T")[0],exerciseIds:exerciseIds||[]};
-    const updated=[c,...completions]; setCompletions(updated); save(updated,customRoutines,customExercises);
-    sbSaveCompletion(c);
-    showToast(`Logged ${routine.name}`);
-  }, [completions, customRoutines, customExercises, save, sbSaveCompletion]);
+  
 
     const completeWorkout = useCallback(() => {
     logCompletion(activeWorkout.routine, activeWorkout.exercises.map(e=>e.id)); setActiveWorkout(null);
@@ -1361,8 +1354,8 @@ etion = useCallback((routine, exerciseIds) => {
             <button onClick={()=>setFilterFav(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterFav?"#E8B84B22":"none",color:filterFav?"#E8B84B":DARK.text2,border:`0.5px solid ${filterFav?"#E8B84B66":DARK.border2}`,cursor:"pointer"}}>
               <span style={{fontSize:15,color:"#E8B84B"}}>&#9733;</span> Favorite
             </button>
-            <button onClick={()=>setFilterWorkOn(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterWorkOn?"#8B000022":"none",color:filterWorkOn?"#e06666":DARK.text2,border:`0.5px solid ${filterWorkOn?"#8B000066":DARK.border2}`,cursor:"pointer"}}>
-              <span style={{color:"#e06666",fontSize:14}}>&#128170;</span> Work On
+            <button onClick={()=>setFilterWorkOn(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterWorkOn?"#E8B84B22":"none",color:filterWorkOn?"#E8B84B":DARK.text2,border:`0.5px solid ${filterWorkOn?"#E8B84B66":DARK.border2}`,cursor:"pointer"}}>
+              <span style={{color:"#E8B84B",fontSize:12}}>&#128170;</span> Work On
             </button>
             <div style={{marginLeft:"auto",display:"flex",gap:4}}>
               {[["name","A-Z"],["completions","Most Completed"]].map(([val,label])=>(
@@ -1396,7 +1389,7 @@ etion = useCallback((routine, exerciseIds) => {
                       <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
                         {(exerciseCompletionCounts[e.id]||0)>0&&<span style={{fontSize:11,color:DARK.text3,fontWeight:500}}>{exerciseCompletionCounts[e.id]}&#215;</span>}
                         {e.favorite==="Favorite"&&<span style={{fontSize:15,color:"#E8B84B",lineHeight:1}}>&#9733;</span>}
-                        {e.workOn==="Work On"&&<span style={{fontSize:14,color:"#e06666",lineHeight:1}}>&#128170;</span>}
+                        {e.workOn==="Work On"&&<span style={{fontSize:12,color:"#e06666",lineHeight:1}}>&#128170;</span>}
                       </div>
                     </div>
                     <div style={{marginTop:5,display:"flex",gap:4,flexWrap:"wrap"}}>
