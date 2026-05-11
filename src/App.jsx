@@ -677,24 +677,40 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
   };
 
   const doSwap = (i) => {
-    const current = exercises[i].ex;
-    const usedIds = exercises.map(item=>item.ex.id);
+    const slot = exercises[i];
+    const current = slot.ex;
+    const swappedOut = slot.swappedOut || new Set();
+    const usedIds = new Set(exercises.map(item=>item.ex.id));
+    const excludeIds = new Set([...swappedOut, ...usedIds]); // never revisit prior swaps
     const currentNeverDone = (exerciseCompletionCounts[current.id]||0) === 0;
-    // If swapping a never-completed, prefer another never-completed; else exclude never-completed
-    const pool = EXERCISES
-      .filter(e=>e.id!==current.id && e.type===routineType && !usedIds.includes(e.id))
-      .filter(e=>e.bodyRegion===current.bodyRegion || (e.muscleTags||[]).some(t=>(current.muscleTags||[]).includes(t)));
-    const neverDonePool = pool.filter(e=>(exerciseCompletionCounts[e.id]||0)===0);
-    const donePool = pool.filter(e=>(exerciseCompletionCounts[e.id]||0)>0)
-      .map(e=>{ const rawDone=exerciseCompletionCounts[e.id]||0; const boosted=(e.favorite==="Favorite"||e.workOn==="Work On")?rawDone*0.5:rawDone; return {e,score:boosted}; })
-      .sort((a,b)=>a.score-b.score);
-    // Pick: if current is never-done and a never-done alt exists, use it; else use best done
-    const newEx = currentNeverDone && neverDonePool.length>0
-      ? neverDonePool[0]
-      : donePool.length>0 ? donePool[0].e : (neverDonePool[0] || null);
+
+    const score = e => {
+      const rawDone = exerciseCompletionCounts[e.id]||0;
+      const boosted = (e.favorite==="Favorite"||e.workOn==="Work On") ? rawDone*0.5 : rawDone;
+      return boosted;
+    };
+
+    // Build candidate pool: start same muscle/region, then broaden if exhausted
+    const baseFilter = e => e.type===routineType && !excludeIds.has(e.id);
+    const sameGroup = EXERCISES.filter(e => baseFilter(e) &&
+      (e.bodyRegion===current.bodyRegion || (e.muscleTags||[]).some(t=>(current.muscleTags||[]).includes(t))));
+    const broader = EXERCISES.filter(e => baseFilter(e) && !sameGroup.find(s=>s.id===e.id));
+
+    // Respect never-done rule: if current is never-done, prefer never-done swap
+    const pickFrom = pool => {
+      const neverPool = pool.filter(e=>(exerciseCompletionCounts[e.id]||0)===0);
+      const donePool = pool.filter(e=>(exerciseCompletionCounts[e.id]||0)>0).sort((a,b)=>score(a)-score(b));
+      return currentNeverDone && neverPool.length>0 ? neverPool[0]
+           : donePool.length>0 ? donePool[0]
+           : neverPool[0] || null;
+    };
+
+    const newEx = pickFrom(sameGroup) || pickFrom(broader);
     if (!newEx) return;
+
+    const newSwappedOut = new Set([...swappedOut, current.id]);
     setExercises(p=>{
-      const updated = p.map((item,idx)=>idx===i?{ex:newEx}:item);
+      const updated = p.map((item,idx)=>idx===i ? {ex:newEx, swappedOut:newSwappedOut} : item);
       return [...updated].sort((a,b)=>{
         const ai=POSITION_ORDER.indexOf(a.ex.bodyPosition); const bi=POSITION_ORDER.indexOf(b.ex.bodyPosition);
         return (ai===-1?99:ai)-(bi===-1?99:bi);
