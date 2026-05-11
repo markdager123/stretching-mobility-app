@@ -673,21 +673,22 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
   const doSwap = (i) => {
     const current = exercises[i].ex;
     const usedIds = exercises.map(item=>item.ex.id);
-    // Find best swap: same muscle region, same type, not in routine, lowest priority score
-    const alts = EXERCISES
+    const currentNeverDone = (exerciseCompletionCounts[current.id]||0) === 0;
+    // If swapping a never-completed, prefer another never-completed; else exclude never-completed
+    const pool = EXERCISES
       .filter(e=>e.id!==current.id && e.type===routineType && !usedIds.includes(e.id))
-      .filter(e=>e.bodyRegion===current.bodyRegion || (e.muscleTags||[]).some(t=>(current.muscleTags||[]).includes(t)))
-      .map(e=>{
-        const rawDone = exerciseCompletionCounts[e.id]||0;
-        const boosted = (e.favorite==="Favorite"||e.workOn==="Work On")?rawDone*0.5:rawDone;
-        return {e, score: boosted};
-      })
+      .filter(e=>e.bodyRegion===current.bodyRegion || (e.muscleTags||[]).some(t=>(current.muscleTags||[]).includes(t)));
+    const neverDonePool = pool.filter(e=>(exerciseCompletionCounts[e.id]||0)===0);
+    const donePool = pool.filter(e=>(exerciseCompletionCounts[e.id]||0)>0)
+      .map(e=>{ const rawDone=exerciseCompletionCounts[e.id]||0; const boosted=(e.favorite==="Favorite"||e.workOn==="Work On")?rawDone*0.5:rawDone; return {e,score:boosted}; })
       .sort((a,b)=>a.score-b.score);
-    if (alts.length===0) return;
-    const newEx = alts[0].e;
+    // Pick: if current is never-done and a never-done alt exists, use it; else use best done
+    const newEx = currentNeverDone && neverDonePool.length>0
+      ? neverDonePool[0]
+      : donePool.length>0 ? donePool[0].e : (neverDonePool[0] || null);
+    if (!newEx) return;
     setExercises(p=>{
       const updated = p.map((item,idx)=>idx===i?{ex:newEx}:item);
-      // Re-sort by position
       return [...updated].sort((a,b)=>{
         const ai=POSITION_ORDER.indexOf(a.ex.bodyPosition); const bi=POSITION_ORDER.indexOf(b.ex.bodyPosition);
         return (ai===-1?99:ai)-(bi===-1?99:bi);
@@ -721,10 +722,7 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
     <div style={{background:DARK.bg3,borderRadius:10,border:"0.5px solid "+DARK.border,padding:16,marginBottom:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <span style={{fontWeight:600,fontSize:15}}>Edit Routine</span>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>setStep("type")} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:12}}>&#8592; Regenerate</button>
-          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:18}}>&#10005;</button>
-        </div>
+        <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:18}}>&#10005;</button>
       </div>
       <input value={routineName} onChange={e=>setRoutineName(e.target.value)} style={{width:"100%",marginBottom:14,boxSizing:"border-box",fontSize:14,fontWeight:500}} placeholder="Routine name"/>
       <div style={{display:"grid",gap:6,marginBottom:14}}>
@@ -733,7 +731,7 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
           const alts = EXERCISES.filter(e=>e.id!==ex.id&&e.type===routineType&&(e.bodyRegion===ex.bodyRegion||(e.muscleTags||[]).some(t=>(ex.muscleTags||[]).includes(t)))&&!exercises.map(item=>item.ex.id).includes(e.id)).sort((a,b)=>(exerciseRoutineCount[a.id]||0)-(exerciseRoutineCount[b.id]||0)).slice(0,5);
           return (
             <div key={ex.id}>
-              <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 11px",borderRadius:8,border:`0.5px solid ${color}55`,background:DARK.bg2}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 11px",borderRadius:8,border:"0.5px solid "+DARK.border,background:DARK.bg2}}>
                 <span style={{fontSize:11,color:DARK.text3,minWidth:16,textAlign:"center"}}>{i+1}</span>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
@@ -746,14 +744,20 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
                       const tc=REGION_COLORS[t]||"#888";
                       return <span key={t} style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:tc+"20",color:tc,border:`0.5px solid ${tc}44`}}>{t}</span>;
                     })}
-                    {ex.bodyPosition&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:DARK.bg2,color:DARK.text2,border:"0.5px solid "+DARK.border2}}>{ex.bodyPosition}</span>}
+                    {ex.bodyPosition&&<span style={{fontSize:10,color:DARK.text3,marginLeft:2}}>{ex.bodyPosition}</span>}
                     {(exerciseCompletionCounts[ex.id]||0)===0&&<span style={{fontSize:10,color:"#C00000",fontWeight:600}}>Never Completed</span>}
                   </div>
                 </div>
                 <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                  {(exerciseCompletionCounts[ex.id]||0)>0&&<span style={{fontSize:11,color:DARK.text3,fontWeight:500,marginRight:2}}>{exerciseCompletionCounts[ex.id]}&#215;</span>}
-                  <button onClick={()=>moveUp(i)} disabled={i===0} style={{background:"none",border:"none",cursor:i===0?"default":"pointer",color:i===0?DARK.border2:DARK.text2,fontSize:12,padding:"2px 4px"}}>&#8593;</button>
-                  <button onClick={()=>moveDown(i)} disabled={i===exercises.length-1} style={{background:"none",border:"none",cursor:i===exercises.length-1?"default":"pointer",color:i===exercises.length-1?DARK.border2:DARK.text2,fontSize:12,padding:"2px 4px"}}>&#8595;</button>
+                  {(()=>{
+                    const lastDate = exerciseLastCompleted[ex.id];
+                    const daysSince = lastDate ? Math.floor((new Date()-new Date(lastDate+"T12:00:00"))/86400000) : null;
+                    const count = exerciseCompletionCounts[ex.id]||0;
+                    return <>
+                      {daysSince!==null&&<span style={{fontSize:10,color:DARK.text3,marginRight:1}}>{daysSince}d</span>}
+                      {count>0&&<span style={{fontSize:10,color:DARK.text3,marginRight:2}}>{count}&#215;</span>}
+                    </>;
+                  })()}
                   <button onClick={()=>doSwap(i)} style={{padding:"3px 8px",borderRadius:5,fontSize:11,background:"none",color:S_COLOR,border:`0.5px solid ${S_COLOR}66`,cursor:"pointer"}}>Swap</button>
                 </div>
               </div>
