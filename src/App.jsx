@@ -407,7 +407,7 @@ function AddCompletionForm({ allRoutines, onAdd, onClose }) {
 }
 
 // ── ExerciseInlineEdit ────────────────────────────────────────
-function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount }) {
+function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount, lastDate }) {
   const [editing, setEditing] = useState(false);
   const [fields, setFields] = useState({});
   const start = () => { setEditing(true); setFields({name:e.name||"",reps:e.type==="Stretching"?(e.reps||"N/A"):e.reps||"",video:e.video||"",muscleTags:[...(e.muscleTags||[])],bodyPosition:e.bodyPosition||"",favorite:e.favorite||"No",workOn:e.workOn||"No",type:e.type||"Stretching"}); };
@@ -425,7 +425,13 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount }) {
         {allTags.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Muscles: </span>{allTags.join(", ")}</div>}
         {e.bodyPosition && !editing && <div><span style={{color:DARK.text2}}>Position: </span>{e.bodyPosition}</div>}
         {!editing && e.reps && e.type!=="Stretching" && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Reps: </span>{e.reps}</div>}
-        {(liveCount||0) > 0 && <div><span style={{color:DARK.text2}}>Completions: </span>{liveCount}</div>}
+        {(()=>{
+          const ds=lastDate?Math.floor((new Date()-new Date(lastDate+"T12:00:00"))/86400000):null;
+          return <>
+            {ds!==null&&<div><span style={{color:DARK.text2}}>Days Since: </span>{ds}</div>}
+            {(liveCount||0)>0&&<div><span style={{color:DARK.text2}}>Completions: </span>{liveCount}</div>}
+          </>;
+        })()}
         {e.routines && e.routines.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Routines: </span>{e.routines.join(", ")}</div>}
       </div>
       {e.video && !editing && <a href={e.video} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:12,color:S_COLOR,textDecoration:"none",marginTop:8}}>&#9654; Watch video</a>}
@@ -1333,7 +1339,9 @@ export default function App() {
                   
                 </div>
                 <div style={{marginTop:5,fontSize:12,color:DARK.text2,display:"flex",gap:12,flexWrap:"wrap"}}>
-                  {last?<span>Last Completed: {fmtDate(last)}</span>:<span>Never completed</span>}
+                  {last
+                    ? <span>{Math.floor((new Date()-new Date(last+"T12:00:00"))/86400000)} days since last completion</span>
+                    : <span>Never completed</span>}
                   {count>0&&<span>{count} Completions</span>}
                 </div>
               </div>
@@ -1391,9 +1399,23 @@ export default function App() {
                         <span style={{fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:4,background:e.type==="Stretching"?S_COLOR:M_COLOR,color:"white",flexShrink:0}}>{e.type==="Stretching"?"S":"M"}</span>
                       </div>
                       <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
-                        {(exerciseCompletionCounts[e.id]||0)>0&&<span style={{fontSize:11,color:DARK.text3,fontWeight:500}}>{exerciseCompletionCounts[e.id]}&#215;</span>}
                         {e.favorite==="Favorite"&&<span style={{fontSize:15,color:"#E8B84B",lineHeight:1}}>&#9733;</span>}
                         {e.workOn==="Work On"&&<span style={{fontSize:12,color:"#e06666",lineHeight:1}}>&#128170;</span>}
+                        {(()=>{
+                          const ld=exerciseLastCompleted[e.id];
+                          const ds=ld?Math.floor((new Date()-new Date(ld+"T12:00:00"))/86400000):null;
+                          const cnt=exerciseCompletionCounts[e.id]||0;
+                          const never=cnt===0;
+                          return <>
+                            {never
+                              ? <span style={{fontSize:11,color:"#ff6666",fontWeight:600}}>Never Completed</span>
+                              : <>
+                                  {ds!==null&&<span style={{fontSize:11,color:DARK.text3}}>{ds}d</span>}
+                                  <span style={{fontSize:11,color:DARK.text3,fontWeight:500}}>{cnt}&#215;</span>
+                                </>
+                            }
+                          </>;
+                        })()}
                       </div>
                     </div>
                     <div style={{marginTop:5,display:"flex",gap:4,flexWrap:"wrap"}}>
@@ -1401,7 +1423,7 @@ export default function App() {
                       {e.reps&&<span style={{fontSize:11,color:DARK.text3,alignSelf:"center"}}>{e.reps}</span>}
                     </div>
                   </div>
-                  {sel && <ExerciseInlineEdit e={e} liveCount={exerciseCompletionCounts[e.id]||0}
+                  {sel && <ExerciseInlineEdit e={e} liveCount={exerciseCompletionCounts[e.id]||0} lastDate={exerciseLastCompleted[e.id]||null}
                     onUpdate={(id,fields)=>{setCustomExercises(p=>{const ex=p.find(x=>x.id===id);const updated=ex?p.map(x=>x.id===id?{...x,...fields}:x):[...p,{...EXERCISES.find(x=>x.id===id),...fields}];save(completions,customRoutines,updated);const saved=updated.find(x=>x.id===id);if(saved)sbSaveCustomExercise(saved);return updated;});}}
                     onDelete={e.id.startsWith('cex-')?()=>setConfirmDelete({label:e.name,onConfirm:()=>{deleteCustomExercise(e.id);setSelectedEx(null);}}):null}
                   />}
