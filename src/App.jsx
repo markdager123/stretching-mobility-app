@@ -1,5 +1,44 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
+// ── Dark mode global styles ───────────────────────────────────────────────
+const DARK_STYLE = `
+  * { box-sizing: border-box; }
+  body { background:#121212; color:#e8e8e8; margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+  input, select, textarea {
+    background:#2a2a2a !important; color:#e8e8e8 !important;
+    border:1px solid #555 !important; border-radius:6px; padding:6px 8px;
+    font-family:inherit; font-size:13px; outline:none; width:100%;
+    -webkit-appearance:none; appearance:none;
+  }
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23aaa' d='M6 8L0 0h12z'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 10px center !important;
+    background-size: 10px !important;
+    padding-right: 28px !important;
+  }
+  input::placeholder, textarea::placeholder { color:#666 !important; }
+  input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); }
+  option { background:#2a2a2a !important; color:#e8e8e8 !important; }
+  details summary { list-style:none; }
+  details summary::-webkit-details-marker { display:none; }
+  ::-webkit-scrollbar { width:4px; height:4px; }
+  ::-webkit-scrollbar-track { background:#1a1a1a; }
+  ::-webkit-scrollbar-thumb { background:#444; border-radius:2px; }
+`;
+
+const DARK = {
+  bg: '#121212',
+  bg2: '#1e1e1e',
+  bg3: '#2a2a2a',
+  bg4: '#333333',
+  border: '#3a3a3a',
+  border2: '#444444',
+  text: '#e8e8e8',
+  text2: '#aaaaaa',
+  text3: '#888888',
+};
+
 // ── Supabase config ───────────────────────────────────────────────────────
 const SUPABASE_URL = "https://uhatnqbqzbtnsqscocdz.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVoYXRucWJxemJ0bnNxc2NvY2R6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5MDEzNTcsImV4cCI6MjA5MjQ3NzM1N30.Wiir3TzuFLXM9SCgej3QHEG2JVUdjuuf5qvd7DFtMwU";
@@ -30,7 +69,7 @@ const EXERCISES = [{"id":"ex-1","name":"Elevated Pigeon Stretch","completions":1
 const ROUTINES_BASE = [{"id":"r-M1","name":"M1","type":"Mobility","exerciseIds":["ex-11","ex-15","ex-39","ex-48","ex-51","ex-61","ex-67","ex-111","ex-112","ex-116"]},{"id":"r-M10","name":"M10","type":"Mobility","exerciseIds":["ex-4","ex-110","ex-122","ex-137","ex-138","ex-141","ex-152","ex-154","ex-165","ex-168"]},{"id":"r-M11","name":"M11","type":"Mobility","exerciseIds":["ex-124","ex-189","ex-191","ex-194","ex-197","ex-200","ex-211","ex-214","ex-219","ex-228"]},{"id":"r-M12","name":"M12","type":"Mobility","exerciseIds":["ex-162","ex-170","ex-177","ex-182","ex-187","ex-192","ex-204","ex-213","ex-215","ex-218"]},{"id":"r-M13","name":"M13","type":"Mobility","exerciseIds":["ex-8","ex-54","ex-179","ex-180","ex-181","ex-183","ex-205","ex-212","ex-220","ex-226"]},{"id":"r-M14","name":"M14","type":"Mobility","exerciseIds":["ex-133","ex-153","ex-176","ex-182","ex-184","ex-193","ex-208","ex-216","ex-221","ex-236"]},{"id":"r-M15","name":"M15","type":"Mobility","exerciseIds":["ex-140","ex-153","ex-167","ex-169","ex-183","ex-185","ex-197","ex-211","ex-215","ex-222"]},{"id":"r-M16","name":"M16","type":"Mobility","exerciseIds":["ex-8","ex-71","ex-120","ex-122","ex-158","ex-168","ex-178","ex-188","ex-207","ex-212"]},{"id":"r-M2","name":"M2","type":"Mobility","exerciseIds":["ex-22","ex-40","ex-52","ex-64","ex-65","ex-80","ex-101","ex-109","ex-117","ex-125"]},{"id":"r-M3","name":"M3","type":"Mobility","exerciseIds":["ex-16","ex-31","ex-38","ex-53","ex-62","ex-85","ex-87","ex-100","ex-121","ex-123"]},{"id":"r-M4","name":"M4","type":"Mobility","exerciseIds":["ex-6","ex-13","ex-23","ex-26","ex-30","ex-32","ex-45","ex-55","ex-56","ex-96"]},{"id":"r-M5","name":"M5","type":"Mobility","exerciseIds":["ex-71","ex-74","ex-79","ex-89","ex-95","ex-97","ex-98","ex-102","ex-114","ex-120"]},{"id":"r-M6","name":"M6","type":"Mobility","exerciseIds":["ex-2","ex-12","ex-14","ex-17","ex-19","ex-28","ex-36","ex-41","ex-60","ex-128"]},{"id":"r-M7","name":"M7","type":"Mobility","exerciseIds":["ex-13","ex-22","ex-61","ex-64","ex-67","ex-101","ex-109","ex-111","ex-114","ex-123"]},{"id":"r-M8","name":"M8","type":"Mobility","exerciseIds":["ex-11","ex-26","ex-28","ex-31","ex-38","ex-45","ex-48","ex-85","ex-89","ex-128"]},{"id":"r-M9","name":"M9","type":"Mobility","exerciseIds":["ex-82","ex-115","ex-147","ex-148","ex-151","ex-155","ex-166","ex-167","ex-171","ex-172"]},{"id":"r-S1","name":"S1","type":"Stretching","exerciseIds":["ex-9","ex-25","ex-33","ex-34","ex-43","ex-44","ex-69","ex-83","ex-90","ex-127"]},{"id":"r-S10","name":"S10","type":"Stretching","exerciseIds":["ex-7","ex-25","ex-77","ex-84","ex-108","ex-118","ex-132","ex-134","ex-146","ex-173"]},{"id":"r-S11","name":"S11","type":"Stretching","exerciseIds":["ex-104","ex-130","ex-131","ex-195","ex-201","ex-202","ex-203","ex-210","ex-224","ex-225"]},{"id":"r-S12","name":"S12","type":"Stretching","exerciseIds":["ex-20","ex-21","ex-73","ex-77","ex-107","ex-119","ex-223","ex-229","ex-230","ex-231"]},{"id":"r-S13","name":"S13","type":"Stretching","exerciseIds":["ex-33","ex-34","ex-72","ex-76","ex-88","ex-92","ex-93","ex-136","ex-210","ex-230"]},{"id":"r-S14","name":"S14","type":"Stretching","exerciseIds":["ex-1","ex-18","ex-35","ex-90","ex-94","ex-144","ex-173","ex-201","ex-229","ex-232"]},{"id":"r-S2","name":"S2","type":"Stretching","exerciseIds":["ex-3","ex-20","ex-37","ex-47","ex-73","ex-91","ex-104","ex-106","ex-131"]},{"id":"r-S3","name":"S3","type":"Stretching","exerciseIds":["ex-7","ex-18","ex-50","ex-57","ex-63","ex-70","ex-93","ex-94","ex-99","ex-113"]},{"id":"r-S4","name":"S4","type":"Stretching","exerciseIds":["ex-24","ex-27","ex-49","ex-68","ex-76","ex-88","ex-107","ex-108","ex-119","ex-129"]},{"id":"r-S5","name":"S5","type":"Stretching","exerciseIds":["ex-5","ex-29","ex-42","ex-66","ex-75","ex-81","ex-84","ex-92","ex-118","ex-126"]},{"id":"r-S6","name":"S6","type":"Stretching","exerciseIds":["ex-1","ex-21","ex-46","ex-58","ex-59","ex-72","ex-78","ex-86","ex-103","ex-105"]},{"id":"r-S7","name":"S7","type":"Stretching","exerciseIds":["ex-5","ex-9","ex-29","ex-59","ex-63","ex-69","ex-78","ex-81","ex-99","ex-105"]},{"id":"r-S8","name":"S8","type":"Stretching","exerciseIds":["ex-1","ex-3","ex-24","ex-47","ex-49","ex-58","ex-70","ex-103","ex-113","ex-126"]},{"id":"r-S9","name":"S9","type":"Stretching","exerciseIds":["ex-10","ex-35","ex-37","ex-57","ex-75","ex-129","ex-130","ex-144","ex-145","ex-157"]}]
 
 const MUSCLE_TAG_ZONES = [
-  { zone: "Upper Body", tags: ["Neck","Shoulders","Chest","Upper/Mid Back","Lats","Biceps","Triceps","Forearms","Wrist"] },
+  { zone: "Upper Body", tags: ["Neck","Shoulders","Chest","Upper/Mid Back","Lats","Biceps","Triceps","Forearms","Arms","Wrist"] },
   { zone: "Core",       tags: ["Core","Abs","Obliques","Lower Back","Spine","Hips","Hip Flexors","Glutes"] },
   { zone: "Legs",       tags: ["Adductors","Abductors","Groin","Quads","Hamstrings","Knees","Calves","Tibialis","Achilles","Ankles","Feet"] },
 ];
@@ -100,18 +139,18 @@ function syncMuscleTags(ex) {
   return { ...ex, muscleTags: deriveMuscleTags(ex.primaryMuscle, ex.bodyRegion) };
 }
 
-const S_COLOR = "#156082";   // Stretching — dark blue
+const S_COLOR = "#2196C4";   // Stretching — medium blue (dark mode friendly)
 const M_COLOR = "#E97132";   // Mobility — orange
 
 const REGION_COLORS = {
   // Upper body = amber/yellow
-  "Neck":"#C49A00",
-  "Shoulders":"#C49A00","Chest":"#C49A00","Upper/Mid Back":"#C49A00","Lats":"#C49A00","Back":"#C49A00",
-  "Biceps":"#C49A00","Triceps":"#C49A00","Forearms":"#C49A00","Wrist":"#C49A00","Arms":"#C49A00",
+  "Neck":"#D4A838",
+  "Shoulders":"#D4A838","Chest":"#D4A838","Upper/Mid Back":"#D4A838","Lats":"#D4A838","Back":"#D4A838",
+  "Biceps":"#D4A838","Triceps":"#D4A838","Forearms":"#D4A838","Wrist":"#D4A838","Arms":"#D4A838",
   // Core & back = blue
-  "Core":"#2E6DA4","Abs":"#2E6DA4","Obliques":"#2E6DA4","Lower Back":"#2E6DA4","Spine":"#2E6DA4",
+  "Core":"#4FA8D4","Abs":"#4FA8D4","Obliques":"#4FA8D4","Lower Back":"#4FA8D4","Spine":"#4FA8D4",
   // Hips & glutes = blue (same zone)
-  "Hips":"#2E6DA4","Hip Flexors":"#2E6DA4","Glutes":"#2E6DA4","Abductors":"#2E6DA4",
+  "Hips":"#4FA8D4","Hip Flexors":"#4FA8D4","Glutes":"#4FA8D4","Abductors":"#4FA8D4",
   // Legs = green
   "Adductors":"#52A882","Groin":"#52A882",
   "Quads":"#52A882","Hamstrings":"#52A882","Knees":"#52A882",
@@ -140,15 +179,17 @@ function MuscleTagPicker({ value, onChange }) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
 
+  const allKnownTags = new Set(ALL_MUSCLE_TAGS);
+  const orphanSelected = value.filter(t => !allKnownTags.has(t));
   const filteredZones = q
-    ? [{ zone: "Results", tags: ALL_MUSCLE_TAGS.filter(t => t.toLowerCase().includes(q)) }]
-    : MUSCLE_TAG_ZONES;
+    ? [{ zone: "Results", tags: [...new Set([...ALL_MUSCLE_TAGS, ...orphanSelected])].filter(t => t.toLowerCase().includes(q)) }]
+    : [...(orphanSelected.length > 0 ? [{ zone: "Other (legacy)", tags: orphanSelected }] : []), ...MUSCLE_TAG_ZONES];
 
   return (
-    <div style={{border:"0.5px solid var(--color-border-secondary)",borderRadius:8,overflow:"hidden",background:"var(--color-background-primary)"}}>
+    <div style={{border:"0.5px solid "+DARK.border,borderRadius:8,overflow:"hidden",background:DARK.bg}}>
       {/* Selected tag pills */}
       {value.length > 0 && (
-        <div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"8px 10px 6px",borderBottom:"0.5px solid var(--color-border-tertiary)"}}>
+        <div style={{display:"flex",flexWrap:"wrap",gap:4,padding:"8px 10px 6px",borderBottom:"0.5px solid "+DARK.border2}}>
           {value.map(t => {
             const c = REGION_COLORS[t]||"#888";
             return (
@@ -163,12 +204,12 @@ function MuscleTagPicker({ value, onChange }) {
       )}
 
       {/* Search input */}
-      <div style={{padding:"6px 10px",borderBottom:"0.5px solid var(--color-border-tertiary)"}}>
+      <div style={{padding:"6px 10px",borderBottom:"0.5px solid "+DARK.border2}}>
         <input
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Type to search muscles/joints..."
-          style={{width:"100%",boxSizing:"border-box",border:"none",outline:"none",background:"transparent",fontSize:12,color:"var(--color-text-primary)"}}
+          style={{width:"100%",boxSizing:"border-box",border:"none",outline:"none",background:"transparent",fontSize:12,color:DARK.text}}
         />
       </div>
 
@@ -178,7 +219,7 @@ function MuscleTagPicker({ value, onChange }) {
           if (tags.length === 0) return null;
           return (
             <div key={zone} style={{marginBottom:8}}>
-              <div style={{fontSize:10,fontWeight:700,color:"var(--color-text-tertiary)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:5}}>{zone}</div>
+              <div style={{fontSize:10,fontWeight:700,color:DARK.text3,letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:5}}>{zone}</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
                 {tags.map(t => {
                   const sel = value.includes(t);
@@ -188,9 +229,9 @@ function MuscleTagPicker({ value, onChange }) {
                       onClick={() => onChange(sel ? value.filter(x=>x!==t) : [...value, t])}
                       style={{
                         fontSize:12,padding:"4px 10px",borderRadius:20,cursor:"pointer",
-                        background: sel ? c : "var(--color-background-secondary)",
-                        color: sel ? "white" : "var(--color-text-secondary)",
-                        border: sel ? `1px solid ${c}` : "0.5px solid var(--color-border-tertiary)",
+                        background: sel ? c : DARK.bg2,
+                        color: sel ? "white" : DARK.text2,
+                        border: sel ? `1px solid ${c}` : "0.5px solid "+DARK.border2,
                         fontWeight: sel ? 600 : 400,
                         transition:"all 0.1s",
                         userSelect:"none",
@@ -204,7 +245,7 @@ function MuscleTagPicker({ value, onChange }) {
           );
         })}
         {q && filteredZones[0]?.tags.length === 0 && (
-          <div style={{fontSize:12,color:"var(--color-text-tertiary)",padding:"8px 0"}}>No matches for &ldquo;{query}&rdquo;</div>
+          <div style={{fontSize:12,color:DARK.text3,padding:"8px 0"}}>No matches for &ldquo;{query}&rdquo;</div>
         )}
       </div>
     </div>
@@ -215,10 +256,10 @@ function MuscleTagPicker({ value, onChange }) {
 function ConfirmDialog({ message, onConfirm, onCancel }) {
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,padding:16}}>
-      <div style={{background:"#ffffff",borderRadius:12,padding:24,maxWidth:320,width:"100%",border:"0.5px solid #dddddd",textAlign:"center",boxShadow:"0 8px 40px rgba(0,0,0,0.45)"}}>
-        <p style={{fontSize:14,fontWeight:600,margin:"0 0 20px",lineHeight:1.5,color:"var(--color-text-primary)"}}>{message}</p>
+      <div style={{background:"#2a2a2a",borderRadius:12,padding:24,maxWidth:320,width:"100%",border:"1px solid #555",textAlign:"center",boxShadow:"0 8px 40px rgba(0,0,0,0.45)"}}>
+        <p style={{fontSize:14,fontWeight:600,margin:"0 0 20px",lineHeight:1.5,color:DARK.text}}>{message}</p>
         <div style={{display:"flex",gap:10}}>
-          <button onClick={onCancel} style={{flex:1,padding:"10px",borderRadius:8,fontSize:13,background:"none",border:"0.5px solid var(--color-border-tertiary)",color:"var(--color-text-secondary)",cursor:"pointer"}}>Cancel</button>
+          <button onClick={onCancel} style={{flex:1,padding:"10px",borderRadius:8,fontSize:13,background:"none",border:"0.5px solid "+DARK.border2,color:DARK.text2,cursor:"pointer"}}>Cancel</button>
           <button onClick={onConfirm} style={{flex:1,padding:"10px",borderRadius:8,fontSize:13,fontWeight:600,background:"#C00000",color:"white",border:"none",cursor:"pointer"}}>Delete</button>
         </div>
       </div>
@@ -234,17 +275,17 @@ function Tag({ label, color }) {
 function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise, onSaveRoutine, exerciseCompletionCounts }) {
   const [editId, setEditId] = useState(null);
   const [editFields, setEditFields] = useState({});
-  const startEdit = ex => { setEditId(ex.id); setEditFields({reps:ex.type==="Stretching"?(ex.reps||"N/A"):ex.reps||"",video:ex.video||"",muscleTags:[...(ex.muscleTags||[])],bodyPosition:ex.bodyPosition||"",type:ex.type||"Stretching"}); };
+  const startEdit = ex => { setEditId(ex.id); setEditFields({name:ex.name||"",reps:ex.type==="Stretching"?(ex.reps||"N/A"):ex.reps||"",video:ex.video||"",muscleTags:[...(ex.muscleTags||[])],bodyPosition:ex.bodyPosition||"",type:ex.type||"Stretching",favorite:ex.favorite||"No",workOn:ex.workOn||"No"}); };
   const saveEdit = ex => {
     onUpdateExercise(ex.id, editFields);
     setEditId(null);
   };
   return (
-    <div style={{maxWidth:520,margin:"0 auto",padding:"0 16px 32px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:"var(--color-background-primary)",zIndex:10,padding:"14px 0 10px",borderBottom:"0.5px solid var(--color-border-tertiary)",marginBottom:16}}>
-        <button onClick={onExit} style={{background:"none",border:"none",cursor:"pointer",color:"var(--color-text-secondary)",fontSize:13,padding:0}}>&#8592; Back</button>
-        <span style={{fontSize:14,fontWeight:500}}>{routine.name}</span>
-        <span style={{fontSize:12,color:"var(--color-text-secondary)"}}>{exercises.length} exercises</span>
+    <div style={{maxWidth:520,margin:"0 auto",padding:"0 16px 32px",background:DARK.bg,minHeight:"100vh"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,background:DARK.bg3,zIndex:10,padding:"12px 16px",borderBottom:"1px solid "+DARK.border,marginBottom:16,borderRadius:"0 0 10px 10px",margin:"0 -16px 16px -16px"}}>
+        <button onClick={onExit} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:13,padding:0}}>&#8592; Back</button>
+        <span style={{fontSize:14,fontWeight:600,color:'#ffffff'}}>{routine.name}</span>
+        <span style={{fontSize:12,color:DARK.text2}}>{exercises.length} exercises</span>
       </div>
       <div style={{display:"grid",gap:8}}>
         {exercises.map((ex,i) => {
@@ -252,46 +293,69 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
           const isEditing = editId === ex.id;
           const allTags = [...new Set(ex.muscleTags||[ex.bodyRegion])].filter(Boolean);
           return (
-            <div key={ex.id} style={{borderRadius:10,border:"0.5px solid var(--color-border-tertiary)",background:"var(--color-background-primary)",overflow:"hidden"}}>
+            <div key={ex.id} style={{borderRadius:10,border:"0.5px solid "+DARK.border2,background:DARK.bg,overflow:"hidden"}}>
               <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"11px 13px"}}>
-                <span style={{fontSize:12,color:"var(--color-text-tertiary)",fontWeight:500,minWidth:18,textAlign:"right",paddingTop:2}}>{i+1}</span>
+                <span style={{fontSize:12,color:DARK.text3,fontWeight:500,minWidth:18,textAlign:"right",paddingTop:3}}>{i+1}</span>
                 <div style={{flex:1,minWidth:0}}>
+                  {/* Top row: name | controls */}
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                    <span style={{fontSize:13,fontWeight:500}}>{ex.name}</span>
-                    <div style={{display:"flex",gap:6,flexShrink:0}}>
-                      {ex.video && <a href={ex.video} target="_blank" rel="noreferrer" style={{fontSize:15,color:"var(--color-text-secondary)",textDecoration:"none"}}>&#9654;</a>}
-                      <button onClick={() => isEditing ? setEditId(null) : startEdit(ex)} style={{fontSize:11,padding:"2px 8px",borderRadius:5,background:"none",border:"0.5px solid var(--color-border-secondary)",color:"var(--color-text-secondary)",cursor:"pointer"}}>{isEditing?"Cancel":"Edit"}</button>
+                    <span style={{fontSize:15,fontWeight:600,color:DARK.text,lineHeight:1.3,flex:1,minWidth:0}}>{ex.name}</span>
+                    <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                      {ex.favorite==="Favorite"&&<span style={{fontSize:15,color:"#E8B84B"}}>&#9733;</span>}
+                      {ex.workOn==="Work On"&&<span style={{fontSize:14,color:"#e06666"}}>&#128170;</span>}
+                      {(exerciseCompletionCounts[ex.id]||0)>0&&<span style={{fontSize:11,color:DARK.text3}}>{exerciseCompletionCounts[ex.id]}&#215;</span>}
+                      {ex.video && <a href={ex.video} target="_blank" rel="noreferrer" style={{fontSize:15,color:DARK.text2,textDecoration:"none"}}>&#9654;</a>}
+                      <button onClick={() => isEditing ? setEditId(null) : startEdit(ex)} style={{fontSize:11,padding:"2px 8px",borderRadius:5,background:"none",border:"0.5px solid "+DARK.border,color:DARK.text2,cursor:"pointer"}}>{isEditing?"Cancel":"Edit"}</button>
                     </div>
                   </div>
-                  {!isEditing && ex.reps && ex.type!=="Stretching" && <div style={{fontSize:12,color:"var(--color-text-secondary)",marginTop:2}}>{ex.reps}</div>}
-                  <div style={{display:"flex",gap:4,marginTop:5,flexWrap:"wrap",alignItems:"center"}}>
-                    {allTags.map(t => { const tc=REGION_COLORS[t]||"#888"; return <span key={t} style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:tc+"20",color:tc,border:`0.5px solid ${tc}44`}}>{t}</span>; })}
-                    {ex.bodyPosition && <span style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:"var(--color-background-secondary)",color:"var(--color-text-secondary)",border:"0.5px solid var(--color-border-tertiary)"}}>{ex.bodyPosition}</span>}
-                    {(exerciseCompletionCounts[ex.id]||0)===0&&!isEditing&&<span style={{fontSize:10,color:"#C00000",fontWeight:600}}>Never Completed</span>}
+                  {!isEditing && ex.reps && ex.type!=="Stretching" && <div style={{fontSize:12,color:DARK.text2,marginTop:2}}>{ex.reps}</div>}
+                  {/* Tags row: tags + never completed on left, body position pinned right */}
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:5,gap:4}}>
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",flex:1,minWidth:0}}>
+                      {allTags.map(t => { const tc=REGION_COLORS[t]||"#888"; return <span key={t} style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:tc+"20",color:tc,border:`0.5px solid ${tc}44`}}>{t}</span>; })}
+                      {(exerciseCompletionCounts[ex.id]||0)===0&&!isEditing&&<span style={{fontSize:10,color:"#ff6666",fontWeight:600}}>Never Completed</span>}
+                    </div>
+                    {ex.bodyPosition&&!isEditing&&<span style={{fontSize:10,color:DARK.text3,flexShrink:0,marginLeft:6}}>{ex.bodyPosition}</span>}
                   </div>
                 </div>
               </div>
               {isEditing && (
-                <div style={{padding:"10px 13px 13px",borderTop:"0.5px solid var(--color-border-tertiary)",background:"var(--color-background-secondary)",display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div style={{padding:"10px 13px 13px",borderTop:"0.5px solid "+DARK.border2,background:DARK.bg2,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  {/* Exercise name */}
                   <div style={{gridColumn:"1/-1",marginBottom:4}}>
-                    <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>Type</div>
-                    <select value={editFields.type||"Stretching"} onChange={ev=>setEditFields(p=>({...p,type:ev.target.value}))} style={{width:"100%",fontSize:12}}>
-                      <option>Stretching</option><option>Mobility</option>
+                    <div style={{fontSize:10,color:DARK.text2,marginBottom:3}}>Exercise Name</div>
+                    <input value={editFields.name||""} onChange={ev=>setEditFields(p=>({...p,name:ev.target.value}))} style={{width:"100%",boxSizing:"border-box",fontSize:12,background:DARK.bg3,color:DARK.text,border:"1px solid #555",borderRadius:6,padding:"6px 8px"}}/>
+                  </div>
+                  {/* Fav + Work On */}
+                  <div style={{gridColumn:"1/-1",display:"flex",gap:8,marginBottom:4}}>
+                    <button onClick={()=>setEditFields(p=>({...p,favorite:p.favorite==="Favorite"?"No":"Favorite"}))} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 10px",borderRadius:8,border:"0.5px solid "+(editFields.favorite==="Favorite"?"#E8B84B66":DARK.border),background:editFields.favorite==="Favorite"?"#E8B84B22":DARK.bg3,cursor:"pointer"}}>
+                      <span style={{fontSize:18,color:"#E8B84B"}}>&#9733;</span>
+                      <span style={{fontSize:12,color:editFields.favorite==="Favorite"?"#C49A00":DARK.text2,fontWeight:editFields.favorite==="Favorite"?600:400}}>Favorite</span>
+                    </button>
+                    <button onClick={()=>setEditFields(p=>({...p,workOn:p.workOn==="Work On"?"No":"Work On"}))} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 10px",borderRadius:8,border:"0.5px solid "+(editFields.workOn==="Work On"?"#e0666655":DARK.border),background:editFields.workOn==="Work On"?"#e0666622":DARK.bg3,cursor:"pointer"}}>
+                      <span style={{fontSize:14,color:"#e06666"}}>&#128170;</span>
+                      <span style={{fontSize:12,color:editFields.workOn==="Work On"?"#e06666":DARK.text2,fontWeight:editFields.workOn==="Work On"?600:400}}>Work On</span>
+                    </button>
+                  </div>
+                  <div style={{gridColumn:"1/-1",marginBottom:4}}>
+                    <div style={{fontSize:10,color:DARK.text2,marginBottom:3}}>Type</div>
+                    <select value={editFields.type||"Stretching"} onChange={ev=>setEditFields(p=>({...p,type:ev.target.value}))} style={{width:"100%",fontSize:12,background:DARK.bg3,color:DARK.text,border:"1px solid #555",borderRadius:6,padding:"6px 8px"}}>
+                      <option style={{background:DARK.bg3}}>Stretching</option><option style={{background:DARK.bg3}}>Mobility</option>
                     </select>
                   </div>
                   {[["reps","Reps / Duration"],["bodyPosition","Body Position"],["video","Video URL"]].map(([field,label]) => (
                     <div key={field} style={{gridColumn:field==="video"?"1/-1":"auto"}}>
-                      <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>{label}</div>
+                      <div style={{fontSize:10,color:DARK.text2,marginBottom:3}}>{label}</div>
                       {field==="bodyPosition"
-                        ? <select value={editFields[field]||""} onChange={ev=>setEditFields(p=>({...p,[field]:ev.target.value}))} style={{width:"100%",fontSize:12}}>
+                        ? <select value={editFields[field]||""} onChange={ev=>setEditFields(p=>({...p,[field]:ev.target.value}))} style={{width:"100%",fontSize:12,background:DARK.bg3,color:DARK.text,border:"1px solid #555",borderRadius:6,padding:"6px 8px"}}>
                             <option value="">-- select --</option>
-                            {["Standing","Kneeling","Sitting","On Back","On Stomach"].map(p=><option key={p} value={p}>{p}</option>)}
+                            {["Standing","Kneeling","Sitting","On Back","On Stomach"].map(p=><option key={p} value={p} style={{background:DARK.bg3,color:DARK.text}}>{p}</option>)}
                           </select>
-                        : <input value={editFields[field]||""} onChange={e => setEditFields(p=>({...p,[field]:e.target.value}))} style={{width:"100%",boxSizing:"border-box",fontSize:12}}/>}
+                        : <input value={editFields[field]||""} onChange={e => setEditFields(p=>({...p,[field]:e.target.value}))} style={{width:"100%",boxSizing:"border-box",fontSize:12,background:DARK.bg3,color:DARK.text,border:"1px solid #555",borderRadius:6,padding:"6px 8px"}}/>}
                     </div>
                   ))}
                   <div style={{gridColumn:"1/-1"}}>
-                    <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>Muscles / Joints</div>
+                    <div style={{fontSize:10,color:DARK.text2,marginBottom:3}}>Muscles / Joints</div>
                     <MuscleTagPicker value={editFields.muscleTags||[]} onChange={tags=>setEditFields(p=>({...p,muscleTags:tags}))}/>
                   </div>
 
@@ -303,7 +367,7 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
         })}
       </div>
       <button onClick={onComplete} style={{width:"100%",marginTop:20,padding:"14px",borderRadius:10,fontSize:15,fontWeight:600,background:M_COLOR,color:"white",border:"none",cursor:"pointer"}}>Log as Complete</button>
-      {onSaveRoutine && <button onClick={onSaveRoutine} style={{width:"100%",marginTop:10,padding:"13px",borderRadius:10,fontSize:14,fontWeight:600,background:"none",color:"var(--color-text-secondary)",border:"1px solid var(--color-border-secondary)",cursor:"pointer"}}>Save Routine</button>}
+      {onSaveRoutine && <button onClick={onSaveRoutine} style={{width:"100%",marginTop:10,padding:"13px",borderRadius:10,fontSize:14,fontWeight:600,background:"none",color:DARK.text2,border:"1px solid "+DARK.border,cursor:"pointer"}}>Save Routine</button>}
     </div>
   );
 }
@@ -319,18 +383,18 @@ function AddCompletionForm({ allRoutines, onAdd, onClose }) {
     onAdd({id:`manual-${Date.now()}`,routineId:r.id,routineName:r.name,date:addDate});
   };
   return (
-    <div style={{background:"var(--color-background-tertiary)",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",padding:14,marginBottom:14}}>
+    <div style={{background:DARK.bg3,borderRadius:8,border:"0.5px solid "+DARK.border,padding:14,marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
         <span style={{fontSize:13,fontWeight:600}}>Add Completion</span>
-        <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--color-text-secondary)",fontSize:18}}>&#10005;</button>
+        <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:18}}>&#10005;</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
         <div>
-          <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>Date</div>
+          <div style={{fontSize:11,color:DARK.text2,marginBottom:4}}>Date</div>
           <input type="date" value={addDate} onChange={e => setAddDate(e.target.value)} style={{width:"100%",boxSizing:"border-box"}}/>
         </div>
         <div>
-          <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>Routine</div>
+          <div style={{fontSize:11,color:DARK.text2,marginBottom:4}}>Routine</div>
           <select value={addRoutineId} onChange={e => setAddRoutineId(e.target.value)} style={{width:"100%"}}>
             <option value="">Select...</option>
             {sortRoutines(allRoutines).map(r => <option key={r.id} value={r.id}>{r.name} ({r.type})</option>)}
@@ -346,7 +410,7 @@ function AddCompletionForm({ allRoutines, onAdd, onClose }) {
 function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount }) {
   const [editing, setEditing] = useState(false);
   const [fields, setFields] = useState({});
-  const start = () => { setEditing(true); setFields({reps:e.type==="Stretching"?(e.reps||"N/A"):e.reps||"",video:e.video||"",muscleTags:[...(e.muscleTags||[])],bodyPosition:e.bodyPosition||"",favorite:e.favorite||"No",workOn:e.workOn||"No",type:e.type||"Stretching"}); };
+  const start = () => { setEditing(true); setFields({name:e.name||"",reps:e.type==="Stretching"?(e.reps||"N/A"):e.reps||"",video:e.video||"",muscleTags:[...(e.muscleTags||[])],bodyPosition:e.bodyPosition||"",favorite:e.favorite||"No",workOn:e.workOn||"No",type:e.type||"Stretching"}); };
   const save = () => {
     const updatedFields = {...fields};
     // muscleTags is already set directly from the picker
@@ -358,11 +422,11 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount }) {
   return (
     <div style={{padding:"0 12px 12px",borderTop:`0.5px solid ${c}33`}}>
       <div style={{paddingTop:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px 12px",fontSize:13}}>
-        {allTags.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:"var(--color-text-secondary)"}}>Muscles: </span>{allTags.join(", ")}</div>}
-        {e.bodyPosition && !editing && <div><span style={{color:"var(--color-text-secondary)"}}>Position: </span>{e.bodyPosition}</div>}
-        {!editing && e.reps && e.type!=="Stretching" && <div style={{gridColumn:"1/-1"}}><span style={{color:"var(--color-text-secondary)"}}>Reps: </span>{e.reps}</div>}
-        {(liveCount||0) > 0 && <div><span style={{color:"var(--color-text-secondary)"}}>Completions: </span>{liveCount}</div>}
-        {e.routines && e.routines.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:"var(--color-text-secondary)"}}>Routines: </span>{e.routines.join(", ")}</div>}
+        {allTags.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Muscles: </span>{allTags.join(", ")}</div>}
+        {e.bodyPosition && !editing && <div><span style={{color:DARK.text2}}>Position: </span>{e.bodyPosition}</div>}
+        {!editing && e.reps && e.type!=="Stretching" && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Reps: </span>{e.reps}</div>}
+        {(liveCount||0) > 0 && <div><span style={{color:DARK.text2}}>Completions: </span>{liveCount}</div>}
+        {e.routines && e.routines.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Routines: </span>{e.routines.join(", ")}</div>}
       </div>
       {e.video && !editing && <a href={e.video} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:12,color:S_COLOR,textDecoration:"none",marginTop:8}}>&#9654; Watch video</a>}
       {!editing ? (
@@ -371,45 +435,50 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount }) {
         {onDelete && <button onClick={onDelete} style={{padding:"4px 12px",borderRadius:6,fontSize:12,fontWeight:500,background:"none",border:"0.5px solid #C0000066",color:"#C00000",cursor:"pointer"}}>Delete</button>}
       </div>
       ) : (
-        <div style={{marginTop:10,background:"var(--color-background-secondary)",borderRadius:8,padding:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <div style={{marginTop:10,background:DARK.bg2,borderRadius:8,padding:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          {/* Exercise name at top */}
+          <div style={{gridColumn:"1/-1",marginBottom:4}}>
+            <div style={{fontSize:10,color:DARK.text2,marginBottom:3}}>Exercise Name</div>
+            <input value={fields.name||""} onChange={ev=>setFields(p=>({...p,name:ev.target.value}))} style={{width:"100%",boxSizing:"border-box",fontSize:12,background:DARK.bg3,color:DARK.text,border:"1px solid #555",borderRadius:6,padding:"6px 8px"}}/>
+          </div>
           {/* Type selector at top */}
           <div style={{gridColumn:"1/-1",marginBottom:4}}>
-            <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>Type</div>
-            <select value={fields.type||"Stretching"} onChange={ev=>setFields(p=>({...p,type:ev.target.value}))} style={{width:"100%",fontSize:12}}>
-              <option>Stretching</option><option>Mobility</option>
+            <div style={{fontSize:10,color:DARK.text2,marginBottom:3}}>Type</div>
+            <select value={fields.type||"Stretching"} onChange={ev=>setFields(p=>({...p,type:ev.target.value}))} style={{width:"100%",fontSize:12,background:DARK.bg3,color:DARK.text,border:"1px solid #555",borderRadius:6,padding:"6px 8px"}}>
+              <option style={{background:DARK.bg3}}>Stretching</option><option style={{background:DARK.bg3}}>Mobility</option>
             </select>
           </div>
           {/* Favorite + Work On symbol toggles at top */}
           <div style={{gridColumn:"1/-1",display:"flex",gap:10,marginBottom:4}}>
-            <button onClick={()=>setFields(p=>({...p,favorite:p.favorite==="Favorite"?"No":"Favorite"}))} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,fontSize:14,border:"0.5px solid",borderColor:fields.favorite==="Favorite"?"#E8B84B66":"var(--color-border-tertiary)",background:fields.favorite==="Favorite"?"#E8B84B22":"var(--color-background-primary)",cursor:"pointer",transition:"all 0.15s"}}>
+            <button onClick={()=>setFields(p=>({...p,favorite:p.favorite==="Favorite"?"No":"Favorite"}))} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,fontSize:14,border:"0.5px solid",borderColor:fields.favorite==="Favorite"?"#E8B84B66":DARK.border2,background:fields.favorite==="Favorite"?"#E8B84B22":DARK.bg,cursor:"pointer",transition:"all 0.15s"}}>
               <span style={{fontSize:20,lineHeight:1,color:"#E8B84B"}}>&#9733;</span>
-              <span style={{fontSize:12,color:fields.favorite==="Favorite"?"#C49A00":"var(--color-text-secondary)",fontWeight:fields.favorite==="Favorite"?600:400}}>Favorite</span>
+              <span style={{fontSize:12,color:fields.favorite==="Favorite"?"#C49A00":DARK.text2,fontWeight:fields.favorite==="Favorite"?600:400}}>Favorite</span>
             </button>
-            <button onClick={()=>setFields(p=>({...p,workOn:p.workOn==="Work On"?"No":"Work On"}))} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,fontSize:14,border:"0.5px solid",borderColor:fields.workOn==="Work On"?"#8B000066":"var(--color-border-tertiary)",background:fields.workOn==="Work On"?"#8B000022":"var(--color-background-primary)",cursor:"pointer",transition:"all 0.15s"}}>
-              <span style={{fontSize:18,lineHeight:1,color:"#8B0000"}}>&#8635;</span>
-              <span style={{fontSize:12,color:fields.workOn==="Work On"?"#8B0000":"var(--color-text-secondary)",fontWeight:fields.workOn==="Work On"?600:400}}>Work On</span>
+            <button onClick={()=>setFields(p=>({...p,workOn:p.workOn==="Work On"?"No":"Work On"}))} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,fontSize:14,border:"0.5px solid",borderColor:fields.workOn==="Work On"?"#8B000066":DARK.border2,background:fields.workOn==="Work On"?"#8B000022":DARK.bg,cursor:"pointer",transition:"all 0.15s"}}>
+              <span style={{fontSize:14,lineHeight:1,color:"#e06666"}}>&#128170;</span>
+              <span style={{fontSize:12,color:fields.workOn==="Work On"?"#e06666":DARK.text2,fontWeight:fields.workOn==="Work On"?600:400}}>Work On</span>
             </button>
           </div>
           {[["reps","Reps"],["bodyPosition","Body Position"],["video","Video URL"]].map(([field,label]) => (
             <div key={field} style={{gridColumn:field==="video"?"1/-1":"auto"}}>
-              <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>{label}</div>
+              <div style={{fontSize:10,color:DARK.text2,marginBottom:3}}>{label}</div>
               {field==="bodyPosition"
-                ? <select value={fields[field]||""} onChange={ev=>setFields(p=>({...p,[field]:ev.target.value}))} style={{width:"100%",fontSize:12}}>
-                    <option value="">-- select --</option>
-                    {["Standing","Kneeling","Sitting","On Back","On Stomach"].map(p=><option key={p} value={p}>{p}</option>)}
+                ? <select value={fields[field]||""} onChange={ev=>setFields(p=>({...p,[field]:ev.target.value}))} style={{width:"100%",fontSize:12,background:DARK.bg3,color:DARK.text,border:"1px solid #555",borderRadius:6,padding:"6px 8px"}}>
+                    <option value="" style={{background:DARK.bg3}}>-- select --</option>
+                    {["Standing","Kneeling","Sitting","On Back","On Stomach"].map(p=><option key={p} value={p} style={{background:DARK.bg3,color:DARK.text}}>{p}</option>)}
                   </select>
-                : <input value={fields[field]||""} onChange={ev => setFields(p=>({...p,[field]:ev.target.value}))} style={{width:"100%",boxSizing:"border-box",fontSize:12}}/>}
+                : <input value={fields[field]||""} onChange={ev => setFields(p=>({...p,[field]:ev.target.value}))} style={{width:"100%",boxSizing:"border-box",fontSize:12,background:DARK.bg3,color:DARK.text,border:"1px solid #555",borderRadius:6,padding:"6px 8px"}}/>}
             </div>
           ))}
           <div style={{gridColumn:"1/-1"}}>
-            <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>Muscles / Joints</div>
+            <div style={{fontSize:10,color:DARK.text2,marginBottom:3}}>Muscles / Joints</div>
             <MuscleTagPicker value={fields.muscleTags||[]} onChange={tags=>setFields(p=>({...p,muscleTags:tags}))}/>
           </div>
 
 
           <div style={{display:"flex",gap:8,gridColumn:"1/-1"}}>
             <button onClick={save} style={{flex:1,padding:"7px",borderRadius:6,fontSize:13,fontWeight:600,background:S_COLOR,color:"white",border:"none",cursor:"pointer"}}>Save</button>
-            <button onClick={() => setEditing(false)} style={{padding:"7px 12px",borderRadius:6,fontSize:13,background:"none",border:"0.5px solid var(--color-border-tertiary)",color:"var(--color-text-secondary)",cursor:"pointer"}}>Cancel</button>
+            <button onClick={() => setEditing(false)} style={{padding:"7px 12px",borderRadius:6,fontSize:13,background:"none",border:"0.5px solid "+DARK.border2,color:DARK.text2,cursor:"pointer"}}>Cancel</button>
           </div>
         </div>
       )}
@@ -435,71 +504,73 @@ function AddExerciseForm({ onSave, onClose }) {
     onSave({id:`cex-${Date.now()}`,name:name.trim(),type,bodyRegion,bodyPosition,primaryMuscle:"",reps,video,favorite,workOn,completions:0,routines:[],muscleTags});
   };
   return (
-    <div style={{background:"var(--color-background-tertiary)",borderRadius:10,border:"0.5px solid var(--color-border-secondary)",padding:16,marginBottom:16}}>
+    <div style={{background:DARK.bg3,borderRadius:10,border:"0.5px solid "+DARK.border,padding:16,marginBottom:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <span style={{fontWeight:600,fontSize:15}}>Add Exercise</span>
-        <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--color-text-secondary)",fontSize:18}}>&#10005;</button>
+        <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:18}}>&#10005;</button>
       </div>
       <div style={{marginBottom:10}}>
-        <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>Name *</div>
+        <div style={{fontSize:11,color:DARK.text2,marginBottom:4}}>Name *</div>
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Exercise name" style={{width:"100%",boxSizing:"border-box"}}/>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
         <div>
-          <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>Type</div>
+          <div style={{fontSize:11,color:DARK.text2,marginBottom:4}}>Type</div>
           <select value={type} onChange={e => setType(e.target.value)} style={{width:"100%"}}><option>Stretching</option><option>Mobility</option></select>
         </div>
         <div>
-          <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>Body Region</div>
+          <div style={{fontSize:11,color:DARK.text2,marginBottom:4}}>Body Region</div>
           <select value={bodyRegion} onChange={e => setBodyRegion(e.target.value)} style={{width:"100%"}}>
             <option value="">-- select --</option>
             {regionList.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
         <div>
-          <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>Body Position</div>
+          <div style={{fontSize:11,color:DARK.text2,marginBottom:4}}>Body Position</div>
           <select value={bodyPosition} onChange={e => setBodyPosition(e.target.value)} style={{width:"100%"}}>
             <option value="">-- select --</option>
             {positionList.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
         <div>
-          <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>Reps / Duration</div>
+          <div style={{fontSize:11,color:DARK.text2,marginBottom:4}}>Reps / Duration</div>
           <input value={reps} onChange={e => setReps(e.target.value)} placeholder="e.g. 5 reps each side" style={{width:"100%",boxSizing:"border-box"}}/>
         </div>
       </div>
       <div style={{marginBottom:10}}>
-        <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>Muscles / Joints</div>
+        <div style={{fontSize:11,color:DARK.text2,marginBottom:4}}>Muscles / Joints</div>
         <MuscleTagPicker value={muscleTags} onChange={setMuscleTags}/>
       </div>
       <div style={{marginBottom:14}}>
-        <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:4}}>Video URL</div>
+        <div style={{fontSize:11,color:DARK.text2,marginBottom:4}}>Video URL</div>
         <input value={video} onChange={e => setVideo(e.target.value)} placeholder="YouTube or Instagram URL" style={{width:"100%",boxSizing:"border-box"}}/>
       </div>
       <div style={{display:"flex",gap:10,marginBottom:14}}>
-        <button onClick={()=>setFavorite(v=>v==="Favorite"?"No":"Favorite")} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,border:"0.5px solid",borderColor:favorite==="Favorite"?"#E8B84B66":"var(--color-border-tertiary)",background:favorite==="Favorite"?"#E8B84B22":"var(--color-background-primary)",cursor:"pointer"}}>
+        <button onClick={()=>setFavorite(v=>v==="Favorite"?"No":"Favorite")} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,border:"0.5px solid",borderColor:favorite==="Favorite"?"#E8B84B66":DARK.border2,background:favorite==="Favorite"?"#E8B84B22":DARK.bg,cursor:"pointer"}}>
           <span style={{fontSize:20,color:"#E8B84B"}}>&#9733;</span>
-          <span style={{fontSize:13,color:favorite==="Favorite"?"#C49A00":"var(--color-text-secondary)",fontWeight:favorite==="Favorite"?600:400}}>Favorite</span>
+          <span style={{fontSize:13,color:favorite==="Favorite"?"#C49A00":DARK.text2,fontWeight:favorite==="Favorite"?600:400}}>Favorite</span>
         </button>
-        <button onClick={()=>setWorkOn(v=>v==="Work On"?"No":"Work On")} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,border:"0.5px solid",borderColor:workOn==="Work On"?"#8B000066":"var(--color-border-tertiary)",background:workOn==="Work On"?"#8B000022":"var(--color-background-primary)",cursor:"pointer"}}>
-          <span style={{fontSize:18,color:"#8B0000"}}>&#8635;</span>
-          <span style={{fontSize:13,color:workOn==="Work On"?"#8B0000":"var(--color-text-secondary)",fontWeight:workOn==="Work On"?600:400}}>Work On</span>
+        <button onClick={()=>setWorkOn(v=>v==="Work On"?"No":"Work On")} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,border:"0.5px solid",borderColor:workOn==="Work On"?"#8B000066":DARK.border2,background:workOn==="Work On"?"#8B000022":DARK.bg,cursor:"pointer"}}>
+          <span style={{fontSize:14,color:"#e06666"}}>&#128170;</span>
+          <span style={{fontSize:13,color:workOn==="Work On"?"#e06666":DARK.text2,fontWeight:workOn==="Work On"?600:400}}>Work On</span>
         </button>
       </div>
-      <button onClick={save} disabled={!name.trim()} style={{width:"100%",padding:"11px",borderRadius:8,fontSize:14,fontWeight:600,background:name.trim()?S_COLOR:"var(--color-background-secondary)",color:name.trim()?"white":"var(--color-text-tertiary)",border:"none",cursor:name.trim()?"pointer":"default"}}>Add Exercise</button>
+      <button onClick={save} disabled={!name.trim()} style={{width:"100%",padding:"11px",borderRadius:8,fontSize:14,fontWeight:600,background:name.trim()?S_COLOR:DARK.bg2,color:name.trim()?"white":DARK.text3,border:"none",cursor:name.trim()?"pointer":"default"}}>Add Exercise</button>
     </div>
   );
 }
 
 // ── NewRoutineBuilder ─────────────────────────────────────────
 
-function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletionCounts, exerciseLastCompleted, onStart, onClose }) {
-  const [step, setStep] = useState("type");
-  const [routineType, setRoutineType] = useState(filterType||"Stretching");
+function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletionCounts, exerciseLastCompleted, recentExercisesByType, onStart, onClose }) {
+  const [step, setStep] = useState("generating");
+  const [routineType] = useState(filterType||"Stretching");
   const [exercises, setExercises] = useState([]);
   const [routineName, setRoutineName] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  useEffect(() => { generate(filterType||"Stretching"); }, []);
 
   const generate = async type => {
     setLoading(true); setError(null); setStep("generating");
@@ -510,38 +581,58 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
       const MAX_DONE = 30;  // normalize completion counts against this cap
       const MAX_DAYS = 90;  // recency cap in days
 
-      const candidates = EXERCISES.filter(e => e.type === type).map(e => {
+      // Build scored candidates
+      const allCandidates = EXERCISES.filter(e => e.type === type).map(e => {
         const rarity = exerciseRoutineCount[e.id]||0;
         const rawDone = exerciseCompletionCounts[e.id]||0;
         const boosted = (e.favorite==="Favorite"||e.workOn==="Work On") ? rawDone*0.5 : rawDone;
-        const normDone = Math.min(boosted, MAX_DONE) / MAX_DONE; // 0=never done, 1=very done
+        const normDone = Math.min(boosted, MAX_DONE) / MAX_DONE;
 
         const lastDate = exerciseLastCompleted[e.id];
         const daysSince = lastDate
           ? Math.floor((today - new Date(lastDate+"T12:00:00")) / 86400000)
           : MAX_DAYS;
-        const normRecency = Math.min(daysSince, MAX_DAYS) / MAX_DAYS; // 0=recent, 1=long ago
+        const normRecency = Math.min(daysSince, MAX_DAYS) / MAX_DAYS;
 
-        // Combined score: lower = higher priority
-        // 80% completion weight, 20% recency weight
-        // Both oriented so higher value = more overdue/undertrained
-        const score = normDone * 0.8 + normRecency * 0.2;
+        // Recency penalty based on last N routines of same type
+        const recent = recentExercisesByType?.[type] || { last3: new Set(), last6: new Set() };
+        const inLast3 = recent.last3.has(e.id);
+        const inLast6 = recent.last6.has(e.id);
+        // last3 = near-blocked (very unlikely to appear), last6 = soft penalty
+        const recencyPenalty = inLast3 ? 0.8 : inLast6 ? 0.35 : 0;
 
+        // score: lower = higher priority
+        // 55% completion count, 25% recency date, 20% recency penalty
+        const score = normDone * 0.55 + (1 - normRecency) * 0.25 + recencyPenalty + (rarity > 5 ? 0.05 : 0);
+
+        const neverDone = (exerciseCompletionCounts[e.id]||0) === 0;
         const flags = [e.favorite==="Favorite"?"FAV":"", e.workOn==="Work On"?"IMPROVE":""].filter(Boolean).join(",");
-        return { e, rarity, score, flags };
+        return { e, rarity, score, flags, neverDone };
       });
 
-      const scoredList = candidates.sort((a,b) => a.score - b.score || a.rarity - b.rarity);
-      // Cap to top 80 candidates to stay within API limits
-      const topCandidates = scoredList.slice(0, 80);
-      const list = topCandidates.map(({e, rarity, score, flags}) =>
-        `${e.id}|${e.name}|${e.bodyRegion}|${e.bodyPosition}|${score.toFixed(2)}${flags?"|"+flags:""}`
+      // Separate never-done exercises
+      const neverDonePool = allCandidates.filter(c => c.neverDone).sort((a,b) => a.rarity - b.rarity);
+      const doneBefore = allCandidates.filter(c => !c.neverDone).sort((a,b) => a.score - b.score || a.rarity - b.rarity);
+
+      // Always inject exactly 1 never-completed exercise if available
+      let forcedNever = null;
+      if (neverDonePool.length > 0) {
+        forcedNever = neverDonePool[0];
+      }
+
+      // Build top candidates from done-before pool (cap at 79 to leave room for 1 never-done)
+      const topDone = doneBefore.slice(0, forcedNever ? 79 : 80);
+      const topCandidates = forcedNever ? [...topDone, forcedNever] : topDone;
+      const forcedId = forcedNever ? forcedNever.e.id : null;
+      const list = topCandidates.map(({e, rarity, score, flags, neverDone}) =>
+        `${e.id}|${e.name}|${e.bodyRegion}|${e.bodyPosition}|${score.toFixed(2)}${neverDone?"|NEW":""}${flags?"|"+flags:""}`
       ).join("\n");
+      const forcedNote = forcedId ? `\nIMPORTANT: You MUST include exactly this one NEW exercise: ${forcedId}. Include no other NEW-tagged exercises.` : "";
       const resp = await fetch("/api/generate", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
-          system:`Pick 10 ${type} exercises. Cover 6+ body regions, max 2 per region. Prefer lower score and lower r values. Sort by position: Standing, Kneeling, Sitting, On Back, On Stomach. Return ONLY JSON: {"name":"2-4 word name","exerciseIds":["id1","id2","id3","id4","id5","id6","id7","id8","id9","id10"]}\n\n${list}`,
+          system:`Pick 10 ${type} exercises. Cover 6+ body regions, max 2 per region. Prefer lower score. Exercises tagged NEW have never been done — include exactly 1 NEW exercise and no more.${forcedNote} Return ONLY JSON: {"exerciseIds":["id1","id2","id3","id4","id5","id6","id7","id8","id9","id10"]}\n\n${list}`,
           userMessage:`Create ${type} routine`
         })
       });
@@ -553,19 +644,56 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
       if (s===-1) throw new Error("No JSON in AI response: "+text.slice(0,100));
       const parsed = JSON.parse(text.slice(s,e2+1));
       if (!parsed.exerciseIds||parsed.exerciseIds.length!==10) throw new Error("Did not return 10 exercises");
-      const exObjs = parsed.exerciseIds.map(id=>EXERCISES.find(e=>e.id===id)).filter(Boolean);
-      if (exObjs.length<10) throw new Error("Some exercises not found");
-      setExercises(exObjs.map(ex=>({ex,swapOpen:false})));
-      setRoutineName(parsed.name||`${type} Routine`);
+      let exObjs = parsed.exerciseIds.map(id=>EXERCISES.find(e=>e.id===id)).filter(Boolean);
+      // If AI returned fewer than 10 valid exercises, pad with top-scored candidates not already included
+      if (exObjs.length < 10) {
+        const usedIds = new Set(exObjs.map(e=>e.id));
+        const backfill = topCandidates
+          .map(c=>c.e)
+          .filter(e=>!usedIds.has(e.id))
+          .slice(0, 10 - exObjs.length);
+        exObjs = [...exObjs, ...backfill];
+      }
+      if (exObjs.length < 1) throw new Error("No exercises returned from AI");
+      // Sort by body position order
+      const sorted = [...exObjs].sort((a,b)=>{
+        const ai=POSITION_ORDER.indexOf(a.bodyPosition); const bi=POSITION_ORDER.indexOf(b.bodyPosition);
+        return (ai===-1?99:ai)-(bi===-1?99:bi);
+      });
+      setExercises(sorted.map(ex=>({ex})));
+      setRoutineName(`${type==="Stretching"?"S":"M"} (generated)`);
       setStep("edit");
     } catch(err) {
+      console.error("Generate error:", err);
       setError(err.message||"Generation failed. Try again.");
-      setStep("type");
+      setStep("generating");
     } finally { setLoading(false); }
   };
 
-  const openSwap = i => setExercises(p=>p.map((item,idx)=>({...item,swapOpen:idx===i?!item.swapOpen:false})));
-  const swapExercise = (i,newEx) => setExercises(p=>p.map((item,idx)=>idx===i?{ex:newEx,swapOpen:false}:item));
+  const doSwap = (i) => {
+    const current = exercises[i].ex;
+    const usedIds = exercises.map(item=>item.ex.id);
+    // Find best swap: same muscle region, same type, not in routine, lowest priority score
+    const alts = EXERCISES
+      .filter(e=>e.id!==current.id && e.type===routineType && !usedIds.includes(e.id))
+      .filter(e=>e.bodyRegion===current.bodyRegion || (e.muscleTags||[]).some(t=>(current.muscleTags||[]).includes(t)))
+      .map(e=>{
+        const rawDone = exerciseCompletionCounts[e.id]||0;
+        const boosted = (e.favorite==="Favorite"||e.workOn==="Work On")?rawDone*0.5:rawDone;
+        return {e, score: boosted};
+      })
+      .sort((a,b)=>a.score-b.score);
+    if (alts.length===0) return;
+    const newEx = alts[0].e;
+    setExercises(p=>{
+      const updated = p.map((item,idx)=>idx===i?{ex:newEx}:item);
+      // Re-sort by position
+      return [...updated].sort((a,b)=>{
+        const ai=POSITION_ORDER.indexOf(a.ex.bodyPosition); const bi=POSITION_ORDER.indexOf(b.ex.bodyPosition);
+        return (ai===-1?99:ai)-(bi===-1?99:bi);
+      });
+    });
+  };
   const moveUp = i => { if(i===0)return; setExercises(p=>{const a=[...p];[a[i-1],a[i]]=[a[i],a[i-1]];return a;}); };
   const moveDown = i => setExercises(p=>{if(i>=p.length-1)return p;const a=[...p];[a[i],a[i+1]]=[a[i+1],a[i]];return a;});
   const startR = () => {
@@ -574,76 +702,62 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
     onStart(fakeRoutine, exercises.map(item=>item.ex));
   };
 
-  if (step==="type"||step==="generating") return (
-    <div style={{background:"var(--color-background-tertiary)",borderRadius:10,border:"0.5px solid var(--color-border-secondary)",padding:20,marginBottom:16}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <span style={{fontWeight:600,fontSize:15}}>Generate Routine</span>
-        <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--color-text-secondary)",fontSize:18}}>&#10005;</button>
+  if (step==="generating"||loading) return (
+    <div style={{background:DARK.bg3,borderRadius:10,border:"0.5px solid "+DARK.border,padding:20,marginBottom:16,textAlign:"center"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <span style={{fontWeight:600,fontSize:15,color:DARK.text}}>Generate Routine</span>
+        <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:18}}>&#10005;</button>
       </div>
-      {error && <div style={{fontSize:12,color:"#C00000",marginBottom:12,padding:"8px 10px",background:"#C0000011",borderRadius:6}}>{error}</div>}
-      <p style={{fontSize:13,color:"var(--color-text-secondary)",margin:"0 0 16px",lineHeight:1.5}}>Select a type and AI will build a full-body routine for you.</p>
-      <div style={{display:"flex",gap:10,marginBottom:16}}>
-        {["Stretching","Mobility"].map(t=>(
-          <button key={t} onClick={()=>setRoutineType(t)} style={{flex:1,padding:"12px",borderRadius:8,fontSize:14,fontWeight:600,background:routineType===t?(t==="Stretching"?S_COLOR:M_COLOR):"var(--color-background-secondary)",color:routineType===t?"white":"var(--color-text-secondary)",border:"none",cursor:"pointer",transition:"all 0.15s"}}>{t}</button>
-        ))}
-      </div>
-      <button onClick={()=>generate(routineType)} disabled={loading} style={{width:"100%",padding:"12px",borderRadius:8,fontSize:14,fontWeight:600,background:loading?"var(--color-background-secondary)":"var(--color-text-primary)",color:loading?"var(--color-text-tertiary)":"var(--color-background-primary)",border:"none",cursor:loading?"default":"pointer"}}>
-        {loading?"Building routine...":"Generate Routine"}
-      </button>
+      {error
+        ? <div style={{fontSize:12,color:"#C00000",padding:"8px 10px",background:"#C0000011",borderRadius:6,textAlign:"left",marginBottom:10}}>{error}
+            <button onClick={()=>generate(routineType)} style={{display:"block",marginTop:8,width:"100%",padding:"8px",borderRadius:6,fontSize:13,background:S_COLOR,color:"white",border:"none",cursor:"pointer"}}>Retry</button>
+          </div>
+        : <div style={{color:DARK.text2,fontSize:13}}>Building your {routineType} routine...</div>
+      }
     </div>
   );
 
   return (
-    <div style={{background:"var(--color-background-tertiary)",borderRadius:10,border:"0.5px solid var(--color-border-secondary)",padding:16,marginBottom:16}}>
+    <div style={{background:DARK.bg3,borderRadius:10,border:"0.5px solid "+DARK.border,padding:16,marginBottom:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <span style={{fontWeight:600,fontSize:15}}>Edit Routine</span>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>setStep("type")} style={{background:"none",border:"none",cursor:"pointer",color:"var(--color-text-secondary)",fontSize:12}}>&#8592; Regenerate</button>
-          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--color-text-secondary)",fontSize:18}}>&#10005;</button>
+          <button onClick={()=>setStep("type")} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:12}}>&#8592; Regenerate</button>
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:18}}>&#10005;</button>
         </div>
       </div>
       <input value={routineName} onChange={e=>setRoutineName(e.target.value)} style={{width:"100%",marginBottom:14,boxSizing:"border-box",fontSize:14,fontWeight:500}} placeholder="Routine name"/>
       <div style={{display:"grid",gap:6,marginBottom:14}}>
-        {exercises.map(({ex,swapOpen},i)=>{
+        {exercises.map(({ex},i)=>{
           const color=REGION_COLORS[ex.bodyRegion]||"#888";
           const alts = EXERCISES.filter(e=>e.id!==ex.id&&e.type===routineType&&(e.bodyRegion===ex.bodyRegion||(e.muscleTags||[]).some(t=>(ex.muscleTags||[]).includes(t)))&&!exercises.map(item=>item.ex.id).includes(e.id)).sort((a,b)=>(exerciseRoutineCount[a.id]||0)-(exerciseRoutineCount[b.id]||0)).slice(0,5);
           return (
             <div key={ex.id}>
-              <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 11px",borderRadius:8,border:`0.5px solid ${color}55`,background:"var(--color-background-secondary)"}}>
-                <span style={{fontSize:11,color:"var(--color-text-tertiary)",minWidth:16,textAlign:"center"}}>{i+1}</span>
+              <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 11px",borderRadius:8,border:`0.5px solid ${color}55`,background:DARK.bg2}}>
+                <span style={{fontSize:11,color:DARK.text3,minWidth:16,textAlign:"center"}}>{i+1}</span>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                    <span style={{fontSize:13,fontWeight:500,lineHeight:1.3}}>{ex.name}</span>
+                    <span style={{fontSize:15,fontWeight:600,lineHeight:1.3,color:DARK.text}}>{ex.name}</span>
                     {ex.favorite==="Favorite"&&<span style={{fontSize:13,color:"#E8B84B"}}>&#9733;</span>}
-                    {ex.workOn==="Work On"&&<span style={{fontSize:13,color:"#8B0000"}}>&#8635;</span>}
+                    {ex.workOn==="Work On"&&<span style={{fontSize:14,color:"#e06666"}}>&#128170;</span>}
                   </div>
                   <div style={{display:"flex",gap:4,marginTop:5,flexWrap:"wrap",alignItems:"center"}}>
                     {(ex.muscleTags||[ex.bodyRegion]).filter(Boolean).map(t => {
                       const tc=REGION_COLORS[t]||"#888";
                       return <span key={t} style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:tc+"20",color:tc,border:`0.5px solid ${tc}44`}}>{t}</span>;
                     })}
-                    {ex.bodyPosition&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:"var(--color-background-secondary)",color:"var(--color-text-secondary)",border:"0.5px solid var(--color-border-tertiary)"}}>{ex.bodyPosition}</span>}
+                    {ex.bodyPosition&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:DARK.bg2,color:DARK.text2,border:"0.5px solid "+DARK.border2}}>{ex.bodyPosition}</span>}
                     {(exerciseCompletionCounts[ex.id]||0)===0&&<span style={{fontSize:10,color:"#C00000",fontWeight:600}}>Never Completed</span>}
                   </div>
                 </div>
                 <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                  {(exerciseCompletionCounts[ex.id]||0)>0&&<span style={{fontSize:11,color:"var(--color-text-tertiary)",fontWeight:500,marginRight:2}}>{exerciseCompletionCounts[ex.id]}&#215;</span>}
-                  <button onClick={()=>moveUp(i)} disabled={i===0} style={{background:"none",border:"none",cursor:i===0?"default":"pointer",color:i===0?"var(--color-border-tertiary)":"var(--color-text-secondary)",fontSize:12,padding:"2px 4px"}}>&#8593;</button>
-                  <button onClick={()=>moveDown(i)} disabled={i===exercises.length-1} style={{background:"none",border:"none",cursor:i===exercises.length-1?"default":"pointer",color:i===exercises.length-1?"var(--color-border-tertiary)":"var(--color-text-secondary)",fontSize:12,padding:"2px 4px"}}>&#8595;</button>
-                  <button onClick={()=>openSwap(i)} style={{padding:"3px 8px",borderRadius:5,fontSize:11,background:swapOpen?S_COLOR+"22":"none",color:S_COLOR,border:`0.5px solid ${S_COLOR}66`,cursor:"pointer"}}>Swap</button>
+                  {(exerciseCompletionCounts[ex.id]||0)>0&&<span style={{fontSize:11,color:DARK.text3,fontWeight:500,marginRight:2}}>{exerciseCompletionCounts[ex.id]}&#215;</span>}
+                  <button onClick={()=>moveUp(i)} disabled={i===0} style={{background:"none",border:"none",cursor:i===0?"default":"pointer",color:i===0?DARK.border2:DARK.text2,fontSize:12,padding:"2px 4px"}}>&#8593;</button>
+                  <button onClick={()=>moveDown(i)} disabled={i===exercises.length-1} style={{background:"none",border:"none",cursor:i===exercises.length-1?"default":"pointer",color:i===exercises.length-1?DARK.border2:DARK.text2,fontSize:12,padding:"2px 4px"}}>&#8595;</button>
+                  <button onClick={()=>doSwap(i)} style={{padding:"3px 8px",borderRadius:5,fontSize:11,background:"none",color:S_COLOR,border:`0.5px solid ${S_COLOR}66`,cursor:"pointer"}}>Swap</button>
                 </div>
               </div>
-              {swapOpen&&(
-                <div style={{marginTop:4,padding:"8px 10px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)"}}>
-                  <div style={{fontSize:11,color:"var(--color-text-secondary)",marginBottom:6}}>Alternatives in same muscle group:</div>
-                  {alts.length===0?<div style={{fontSize:12,color:"var(--color-text-tertiary)"}}>No alternatives available</div>:alts.map(alt=>(
-                    <div key={alt.id} onClick={()=>swapExercise(i,alt)} style={{padding:"6px 8px",borderRadius:6,cursor:"pointer",fontSize:13,display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3,background:"var(--color-background-secondary)"}}>
-                      <span>{alt.name}</span>
-                      <span style={{fontSize:10,color:"var(--color-text-tertiary)"}}>{alt.bodyRegion}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+
             </div>
           );
         })}
@@ -693,18 +807,18 @@ function AiRoutineModal({ onStart, onClose, exerciseCompletionCounts }) {
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
-      <div style={{background:"var(--color-background-primary)",borderRadius:14,padding:24,width:"100%",maxWidth:480,border:"0.5px solid var(--color-border-secondary)"}}>
+      <div style={{background:DARK.bg,borderRadius:14,padding:24,width:"100%",maxWidth:480,border:"0.5px solid "+DARK.border}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
           <h2 style={{fontSize:16,fontWeight:500,margin:0}}>AI Routine Generator</h2>
-          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--color-text-secondary)",fontSize:18,lineHeight:1}}>&#10005;</button>
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:18,lineHeight:1}}>&#10005;</button>
         </div>
-        <p style={{fontSize:13,color:"var(--color-text-secondary)",margin:"0 0 14px",lineHeight:1.5}}>Describe how you are feeling or what you need. A 10-exercise routine will be built for you.</p>
-        <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&(e.metaKey||e.ctrlKey))generate();}} placeholder="e.g. I just went cycling and my legs are tight. My neck is also sore." rows={3} style={{width:"100%",boxSizing:"border-box",resize:"none",marginBottom:12,fontSize:14,lineHeight:1.5,padding:"10px 12px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-secondary)",color:"var(--color-text-primary)",fontFamily:"inherit"}}/>
+        <p style={{fontSize:13,color:DARK.text2,margin:"0 0 14px",lineHeight:1.5}}>Describe how you are feeling or what you need. A 10-exercise routine will be built for you.</p>
+        <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&(e.metaKey||e.ctrlKey))generate();}} placeholder="e.g. I just went cycling and my legs are tight. My neck is also sore." rows={3} style={{width:"100%",boxSizing:"border-box",resize:"none",marginBottom:12,fontSize:14,lineHeight:1.5,padding:"10px 12px",borderRadius:8,border:"0.5px solid "+DARK.border,background:DARK.bg2,color:DARK.text,fontFamily:"inherit"}}/>
         {error&&<p style={{fontSize:12,color:"#C00000",margin:"0 0 10px"}}>{error}</p>}
-        <button onClick={generate} disabled={!prompt.trim()||loading} style={{width:"100%",padding:"11px",borderRadius:8,fontSize:14,fontWeight:500,background:(!prompt.trim()||loading)?"var(--color-background-secondary)":"var(--color-text-primary)",color:(!prompt.trim()||loading)?"var(--color-text-tertiary)":"var(--color-background-primary)",border:"none",cursor:(!prompt.trim()||loading)?"default":"pointer"}}>
+        <button onClick={generate} disabled={!prompt.trim()||loading} style={{width:"100%",padding:"11px",borderRadius:8,fontSize:14,fontWeight:500,background:(!prompt.trim()||loading)?DARK.bg2:DARK.text,color:(!prompt.trim()||loading)?DARK.text3:DARK.bg,border:"none",cursor:(!prompt.trim()||loading)?"default":"pointer"}}>
           {loading?"Building your routine...":"Generate Routine"}
         </button>
-        <p style={{fontSize:11,color:"var(--color-text-tertiary)",margin:"10px 0 0",textAlign:"center"}}>Cmd/Ctrl + Enter to generate</p>
+        <p style={{fontSize:11,color:DARK.text3,margin:"10px 0 0",textAlign:"center"}}>Cmd/Ctrl + Enter to generate</p>
       </div>
     </div>
   );
@@ -727,10 +841,12 @@ export default function App() {
   const [activeWorkout, setActiveWorkout] = useState(null);
   const [selectedEx, setSelectedEx] = useState(null);
   const [showNewRoutine, setShowNewRoutine] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showAddCompletion, setShowAddCompletion] = useState(false);
   const [editCompletionId, setEditCompletionId] = useState(null);
+  const [expandedHistory, setExpandedHistory] = useState(null);
   const [editCompletionFields, setEditCompletionFields] = useState({});
   const [confirmDelete, setConfirmDelete] = useState(null); // {type, id, label}
   const chartRef = useRef(null);
@@ -871,7 +987,7 @@ export default function App() {
   const showToast = msg => {
     const el = document.createElement("div");
     el.textContent = msg;
-    Object.assign(el.style, {position:"fixed",bottom:"24px",left:"50%",transform:"translateX(-50%)",background:"var(--color-background-primary)",border:"0.5px solid #ccc",borderRadius:"8px",padding:"10px 18px",fontSize:"13px",fontWeight:"500",zIndex:"9999",whiteSpace:"nowrap",boxShadow:"0 2px 12px rgba(0,0,0,0.1)"});
+    Object.assign(el.style, {position:"fixed",bottom:"24px",left:"50%",transform:"translateX(-50%)",background:DARK.bg,border:"0.5px solid #ccc",borderRadius:"8px",padding:"10px 18px",fontSize:"13px",fontWeight:"500",zIndex:"9999",whiteSpace:"nowrap",boxShadow:"0 2px 12px rgba(0,0,0,0.1)"});
     document.body.appendChild(el);
     setTimeout(() => el.remove(), 2500);
   };
@@ -909,7 +1025,6 @@ export default function App() {
   // Last completed date per exercise (for recency scoring in Generate)
   const exerciseLastCompleted = useMemo(() => {
     const last = {};
-    // Via named routine membership
     EXERCISES.forEach(ex => {
       (ex.routines||[]).forEach(rName => {
         const rid = `r-${rName}`;
@@ -918,7 +1033,6 @@ export default function App() {
         });
       });
     });
-    // Via direct exercise IDs on completion records
     completions.forEach(c => {
       (c.exerciseIds||[]).forEach(id => {
         if (!last[id] || c.date > last[id]) last[id] = c.date;
@@ -926,6 +1040,7 @@ export default function App() {
     });
     return last;
   }, [completions]);
+
 
   const allExercises = useMemo(() => {
     // Merge: custom exercises override base exercises by id, new custom ones appended
@@ -957,6 +1072,32 @@ export default function App() {
   }, [allExercises, exFilterType, filterRegion, filterFav, filterWorkOn, searchQ, exSortBy, exerciseCompletionCounts]);
 
   const allRoutines = useMemo(() => sortRoutines([...ROUTINES_BASE, ...customRoutines]), [customRoutines]);
+
+  const recentExercisesByType = useMemo(() => {
+    const result = { Stretching: { last3: new Set(), last6: new Set() }, Mobility: { last3: new Set(), last6: new Set() } };
+    ["Stretching","Mobility"].forEach(type => {
+      // Get completions of this type, sorted newest first
+      const typed = completions
+        .filter(c => {
+          const r = allRoutines.find(rt => rt.id === c.routineId);
+          return (r?.type || c.routineType) === type;
+        })
+        .sort((a,b) => b.date.localeCompare(a.date));
+
+      // For named routines, expand to exercise IDs via routine definition
+      typed.slice(0, 6).forEach((c, i) => {
+        const r = allRoutines.find(rt => rt.id === c.routineId);
+        const ids = c.exerciseIds?.length > 0
+          ? c.exerciseIds
+          : (r?.exerciseIds || []);
+        ids.forEach(id => {
+          if (i < 3) result[type].last3.add(id);
+          result[type].last6.add(id);
+        });
+      });
+    });
+    return result;
+  }, [completions, allRoutines]);
 
   const exerciseRoutineCount = useMemo(() => {
     const counts = {};
@@ -1014,9 +1155,10 @@ export default function App() {
     }
     return weeks;
   }, [completions, allRoutines]);
-
-  // ── Handlers ──────────────────────────────────────────────
-  const logCompletion = useCallback((routine, exerciseIds) => {
+ // For each type, compute which exercise IDs appeared in the last N completions
+  // last3[type] = Set of exercise IDs in last 3 completions of that type
+  // last6[type] = Set of exercise IDs in last 6 completions of that type
+etion = useCallback((routine, exerciseIds) => {
     const c={id:`n-${Date.now()}`,routineId:routine.id,routineName:routine.name,routineType:routine.type||"",date:new Date().toISOString().split("T")[0],exerciseIds:exerciseIds||[]};
     const updated=[c,...completions]; setCompletions(updated); save(updated,customRoutines,customExercises);
     sbSaveCompletion(c);
@@ -1057,7 +1199,14 @@ export default function App() {
     setActiveWorkout({routine,exercises:exs});
   }, [customExercises]);
 
-  const completeWorkout = useCallback(() => {
+  const logCompletion = useCallback((routine, exerciseIds) => {
+    const c={id:`n-${Date.now()}`,routineId:routine.id,routineName:routine.name,routineType:routine.type||"",date:new Date().toISOString().split("T")[0],exerciseIds:exerciseIds||[]};
+    const updated=[c,...completions]; setCompletions(updated); save(updated,customRoutines,customExercises);
+    sbSaveCompletion(c);
+    showToast(`Logged ${routine.name}`);
+  }, [completions, customRoutines, customExercises, save, sbSaveCompletion]);
+
+    const completeWorkout = useCallback(() => {
     logCompletion(activeWorkout.routine, activeWorkout.exercises.map(e=>e.id)); setActiveWorkout(null);
   }, [activeWorkout, logCompletion]);
 
@@ -1111,7 +1260,12 @@ export default function App() {
     }
   }, [tab, weeklyData]);
 
-  if (!loaded) return <div style={{padding:40,textAlign:"center",color:"var(--color-text-secondary)"}}>Loading...</div>;
+  if (!loaded) return (
+    <>
+      <style>{DARK_STYLE}</style>
+      <div style={{padding:40,textAlign:"center",color:DARK.text2}}>Loading...</div>
+    </>
+  );
 
   if (activeWorkout) return (
     <div style={{padding:"20px 0"}}>
@@ -1121,13 +1275,15 @@ export default function App() {
 
   // ── Render ─────────────────────────────────────────────────
   return (
-    <div style={{maxWidth:660,margin:"0 auto",padding:16}}>
+    <>
+    <style>{DARK_STYLE}</style>
+    <div style={{maxWidth:660,margin:"0 auto",padding:16,background:DARK.bg,minHeight:"100vh",color:DARK.text}}>
       {showAiModal && <AiRoutineModal onStart={handleAiRoutine} onClose={()=>setShowAiModal(false)} exerciseCompletionCounts={exerciseCompletionCounts}/>}
       {confirmDelete && <ConfirmDialog message={`Delete ${confirmDelete.label}?`} onConfirm={()=>{confirmDelete.onConfirm();setConfirmDelete(null);}} onCancel={()=>setConfirmDelete(null)}/>}
 
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h1 style={{fontSize:18,fontWeight:500,margin:0}}>{"Mark's Stretching & Mobility"}</h1>
-        <div style={{fontSize:11,color:"var(--color-text-secondary)",display:"flex",gap:6}}>
+        <h1 style={{fontSize:18,fontWeight:600,margin:0,color:'#ffffff'}}>{"Mark's Stretching & Mobility"}</h1>
+        <div style={{fontSize:11,color:DARK.text2,display:"flex",gap:6}}>
           <span>{allExercises.length} exercises</span><span>&#183;</span><span>{allRoutines.length} routines</span>
         </div>
       </div>
@@ -1140,10 +1296,10 @@ export default function App() {
             <button key={key} onClick={()=>setTab(key)} style={{
               flex:1, padding:"9px 0", fontSize:13,
               fontWeight:active?700:400,
-              background:active?"#e8e8e8":"transparent",
-              border:"1px solid #cccccc",
+              background:active?DARK.bg3:"transparent",
+              border:"1px solid "+DARK.border,
               borderRadius:8,
-              color:active?"var(--color-text-primary)":"var(--color-text-secondary)",
+              color:active?DARK.text:DARK.text2,
               cursor:"pointer",
               transition:"all 0.15s",
             }}>{t}</button>
@@ -1155,21 +1311,21 @@ export default function App() {
       {tab==="routines" && (
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:8}}>
-            <div style={{display:"flex",gap:0,borderRadius:8,overflow:"hidden",border:"1px solid var(--color-border-secondary)"}}>
+            <div style={{display:"flex",gap:0,borderRadius:8,overflow:"hidden",border:"1px solid "+DARK.border}}>
               {[["Stretching",S_COLOR],["Mobility",M_COLOR]].map(([t,color])=>(
-                <button key={t} onClick={()=>setRoutineType(t)} style={{padding:"7px 18px",fontSize:13,fontWeight:routineType===t?700:400,background:routineType===t?color:"var(--color-background-primary)",border:"none",color:routineType===t?"white":"var(--color-text-secondary)",cursor:"pointer",transition:"all 0.15s"}}>{t}</button>
+                <button key={t} onClick={()=>setRoutineType(t)} style={{padding:"7px 18px",fontSize:13,fontWeight:routineType===t?700:400,background:routineType===t?color:DARK.bg,border:"none",color:routineType===t?"white":DARK.text2,cursor:"pointer",transition:"all 0.15s"}}>{t}</button>
               ))}
             </div>
-            <button onClick={()=>setShowNewRoutine(v=>!v)} style={{padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600,background:routineType==="Stretching"?S_COLOR:M_COLOR,color:"white",border:"none",cursor:"pointer",flexShrink:0}}>+ Generate</button>
+            <button onClick={()=>setShowNewRoutine(true)} disabled={isGenerating} style={{padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600,background:routineType==="Stretching"?S_COLOR:M_COLOR,color:"white",border:"none",cursor:isGenerating?"default":"pointer",flexShrink:0,opacity:isGenerating?0.7:1}}>{isGenerating?"Generating...":"+ Generate"}</button>
           </div>
 
-          {showNewRoutine && <NewRoutineBuilder filterType={routineType} exerciseRoutineCount={exerciseRoutineCount} exerciseCompletionCounts={exerciseCompletionCounts} exerciseLastCompleted={exerciseLastCompleted} onStart={(routine,exs)=>{setShowNewRoutine(false);setActiveWorkout({routine,exercises:exs});}} onClose={()=>setShowNewRoutine(false)}/>}
+          {showNewRoutine && <NewRoutineBuilder filterType={routineType} exerciseRoutineCount={exerciseRoutineCount} exerciseCompletionCounts={exerciseCompletionCounts} exerciseLastCompleted={exerciseLastCompleted} recentExercisesByType={recentExercisesByType} onStart={(routine,exs)=>{setShowNewRoutine(false);setActiveWorkout({routine,exercises:exs});}} onClose={()=>setShowNewRoutine(false)}/>}
 
           {filteredRoutines.map(r => {
             const last=lastCompleted(r.id); const count=completionCount(r.id);
             const typeColor=r.type==="Stretching"?S_COLOR:M_COLOR;
             return (
-              <div key={r.id} onClick={()=>startWorkout(r)} style={{background:"var(--color-background-primary)",borderRadius:10,border:`1px solid ${typeColor}33`,padding:"13px 15px",marginBottom:8,cursor:"pointer",transition:"border-color 0.15s"}}
+              <div key={r.id} onClick={()=>startWorkout(r)} style={{background:DARK.bg,borderRadius:10,border:`1px solid ${typeColor}33`,padding:"13px 15px",marginBottom:8,cursor:"pointer",transition:"border-color 0.15s"}}
                 onMouseEnter={e=>e.currentTarget.style.borderColor=typeColor}
                 onMouseLeave={e=>e.currentTarget.style.borderColor=typeColor+"33"}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
@@ -1179,7 +1335,7 @@ export default function App() {
                   </div>
                   
                 </div>
-                <div style={{marginTop:5,fontSize:12,color:"var(--color-text-secondary)",display:"flex",gap:12,flexWrap:"wrap"}}>
+                <div style={{marginTop:5,fontSize:12,color:DARK.text2,display:"flex",gap:12,flexWrap:"wrap"}}>
                   {last?<span>Last Completed: {fmtDate(last)}</span>:<span>Never completed</span>}
                   {count>0&&<span>{count} Completions</span>}
                 </div>
@@ -1200,17 +1356,17 @@ export default function App() {
             {[["All","#888"],["Stretching",S_COLOR],["Mobility",M_COLOR]].map(([t,color])=>{
               const key=t;
               const active=exFilterType===key;
-              return <button key={key} onClick={()=>setExFilterType(key)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:active?color+"22":"none",color:active?color:"var(--color-text-secondary)",border:`0.5px solid ${active?color+"66":"var(--color-border-tertiary)"}`,cursor:"pointer"}}>{key}</button>;
+              return <button key={key} onClick={()=>setExFilterType(key)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:active?color+"22":"none",color:active?color:DARK.text2,border:`0.5px solid ${active?color+"66":DARK.border2}`,cursor:"pointer"}}>{key}</button>;
             })}
-            <button onClick={()=>setFilterFav(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterFav?"#E8B84B22":"none",color:filterFav?"#E8B84B":"var(--color-text-secondary)",border:`0.5px solid ${filterFav?"#E8B84B66":"var(--color-border-tertiary)"}`,cursor:"pointer"}}>
+            <button onClick={()=>setFilterFav(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterFav?"#E8B84B22":"none",color:filterFav?"#E8B84B":DARK.text2,border:`0.5px solid ${filterFav?"#E8B84B66":DARK.border2}`,cursor:"pointer"}}>
               <span style={{fontSize:15,color:"#E8B84B"}}>&#9733;</span> Favorite
             </button>
-            <button onClick={()=>setFilterWorkOn(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterWorkOn?"#8B000022":"none",color:filterWorkOn?"#8B0000":"var(--color-text-secondary)",border:`0.5px solid ${filterWorkOn?"#8B000066":"var(--color-border-tertiary)"}`,cursor:"pointer"}}>
-              <span style={{color:"#8B0000",fontSize:14}}>&#8635;</span> Work On
+            <button onClick={()=>setFilterWorkOn(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterWorkOn?"#8B000022":"none",color:filterWorkOn?"#e06666":DARK.text2,border:`0.5px solid ${filterWorkOn?"#8B000066":DARK.border2}`,cursor:"pointer"}}>
+              <span style={{color:"#e06666",fontSize:14}}>&#128170;</span> Work On
             </button>
             <div style={{marginLeft:"auto",display:"flex",gap:4}}>
               {[["name","A-Z"],["completions","Most Completed"]].map(([val,label])=>(
-                <button key={val} onClick={()=>setExSortBy(val)} style={{padding:"3px 8px",borderRadius:6,fontSize:11,background:exSortBy===val?"var(--color-text-primary)":"var(--color-background-secondary)",color:exSortBy===val?"var(--color-background-primary)":"var(--color-text-secondary)",border:"none",cursor:"pointer"}}>{label}</button>
+                <button key={val} onClick={()=>setExSortBy(val)} style={{padding:"3px 8px",borderRadius:6,fontSize:11,background:exSortBy===val?DARK.text:DARK.bg2,color:exSortBy===val?DARK.bg:DARK.text2,border:"none",cursor:"pointer"}}>{label}</button>
               ))}
             </div>
           </div>
@@ -1222,7 +1378,7 @@ export default function App() {
 
           {showAddExercise && <AddExerciseForm onSave={ex=>{const updated=[...customExercises,ex];setCustomExercises(updated);save(completions,customRoutines,updated);sbSaveCustomExercise(ex);setShowAddExercise(false);showToast(`Added ${ex.name}`);}} onClose={()=>setShowAddExercise(false)}/>}
 
-          <div style={{fontSize:12,color:"var(--color-text-tertiary)",marginBottom:10}}>{filteredExercises.length} of {allExercises.length} exercises</div>
+          <div style={{fontSize:12,color:DARK.text3,marginBottom:10}}>{filteredExercises.length} of {allExercises.length} exercises</div>
 
           <div style={{display:"grid",gap:6}}>
             {filteredExercises.map(e=>{
@@ -1230,7 +1386,7 @@ export default function App() {
               const sel=selectedEx?.id===e.id;
               const tags=(e.muscleTags||[e.bodyRegion]);
               return (
-                <div key={e.id} style={{borderRadius:8,border:sel?`1.5px solid ${c}`:"0.5px solid var(--color-border-tertiary)",background:sel?c+"0d":"var(--color-background-primary)",transition:"all 0.12s",overflow:"hidden"}}>
+                <div key={e.id} style={{borderRadius:8,border:sel?`1.5px solid ${c}`:"0.5px solid "+DARK.border2,background:sel?c+"0d":DARK.bg,transition:"all 0.12s",overflow:"hidden"}}>
                   <div onClick={()=>setSelectedEx(sel?null:e)} style={{padding:"10px 12px",cursor:"pointer"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,flex:1}}>
@@ -1238,14 +1394,14 @@ export default function App() {
                         <span style={{fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:4,background:e.type==="Stretching"?S_COLOR:M_COLOR,color:"white",flexShrink:0}}>{e.type==="Stretching"?"S":"M"}</span>
                       </div>
                       <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
-                        {(exerciseCompletionCounts[e.id]||0)>0&&<span style={{fontSize:11,color:"var(--color-text-tertiary)",fontWeight:500}}>{exerciseCompletionCounts[e.id]}&#215;</span>}
+                        {(exerciseCompletionCounts[e.id]||0)>0&&<span style={{fontSize:11,color:DARK.text3,fontWeight:500}}>{exerciseCompletionCounts[e.id]}&#215;</span>}
                         {e.favorite==="Favorite"&&<span style={{fontSize:15,color:"#E8B84B",lineHeight:1}}>&#9733;</span>}
-                        {e.workOn==="Work On"&&<span style={{fontSize:14,color:"#8B0000",lineHeight:1}}>&#8635;</span>}
+                        {e.workOn==="Work On"&&<span style={{fontSize:14,color:"#e06666",lineHeight:1}}>&#128170;</span>}
                       </div>
                     </div>
                     <div style={{marginTop:5,display:"flex",gap:4,flexWrap:"wrap"}}>
                       {tags.map(t=><Tag key={t} label={t} color={REGION_COLORS[t]||c}/>)}
-                      {e.reps&&<span style={{fontSize:11,color:"var(--color-text-tertiary)",alignSelf:"center"}}>{e.reps}</span>}
+                      {e.reps&&<span style={{fontSize:11,color:DARK.text3,alignSelf:"center"}}>{e.reps}</span>}
                     </div>
                   </div>
                   {sel && <ExerciseInlineEdit e={e} liveCount={exerciseCompletionCounts[e.id]||0}
@@ -1263,10 +1419,10 @@ export default function App() {
       {tab==="history" && (
         <div>
           {/* Chart */}
-          <div style={{background:"var(--color-background-secondary)",borderRadius:12,padding:"16px 16px 12px",marginBottom:20}}>
+          <div style={{background:DARK.bg2,borderRadius:12,padding:"16px 16px 12px",marginBottom:20}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
               <span style={{fontSize:13,fontWeight:500}}>Weekly sessions</span>
-              <div style={{display:"flex",gap:14,fontSize:11,color:"var(--color-text-secondary)"}}>
+              <div style={{display:"flex",gap:14,fontSize:11,color:DARK.text2}}>
                 <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:10,height:10,borderRadius:2,background:S_COLOR,display:"inline-block",flexShrink:0}}></span>Stretching</span>
                 <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:10,height:10,borderRadius:2,background:M_COLOR,display:"inline-block",flexShrink:0}}></span>Mobility</span>
               </div>
@@ -1291,16 +1447,16 @@ export default function App() {
                         return (
                           <div key={i} style={{width:barW,flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center"}}>
                             <div style={{width:"100%",height:chartH,position:"relative",display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
-                              {w.total>0&&<span style={{position:"absolute",bottom:totalBarH+3,left:"50%",transform:"translateX(-50%)",fontSize:10,fontWeight:600,color:"var(--color-text-secondary)",whiteSpace:"nowrap"}}>{w.total}</span>}
+                              {w.total>0&&<span style={{position:"absolute",bottom:totalBarH+3,left:"50%",transform:"translateX(-50%)",fontSize:10,fontWeight:600,color:DARK.text2,whiteSpace:"nowrap"}}>{w.total}</span>}
                               {w.total===0
-                                ?<div style={{width:"100%",height:3,background:"var(--color-border-tertiary)",borderRadius:2}}/>
+                                ?<div style={{width:"100%",height:3,background:DARK.border2,borderRadius:2}}/>
                                 :<div style={{width:"100%",display:"flex",flexDirection:"column",borderRadius:"3px 3px 2px 2px",overflow:"hidden"}}>
                                   {mH>0&&<div style={{width:"100%",height:mH,background:M_COLOR}}/>}
                                   {sH>0&&<div style={{width:"100%",height:sH,background:S_COLOR}}/>}
                                 </div>
                               }
                             </div>
-                            <span style={{fontSize:9,color:"var(--color-text-tertiary)",marginTop:5,textAlign:"center",lineHeight:1.3,whiteSpace:"nowrap"}}>{w.label}</span>
+                            <span style={{fontSize:9,color:DARK.text3,marginTop:5,textAlign:"center",lineHeight:1.3,whiteSpace:"nowrap"}}>{w.label}</span>
                           </div>
                         );
                       })}
@@ -1315,7 +1471,7 @@ export default function App() {
 
           {/* Add + table */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <span style={{fontSize:13,fontWeight:500,color:"var(--color-text-secondary)"}}>{completions.length} sessions</span>
+            <span style={{fontSize:13,fontWeight:500,color:DARK.text2}}>{completions.length} sessions</span>
             <button onClick={()=>setShowAddCompletion(v=>!v)} style={{padding:"5px 12px",borderRadius:6,fontSize:12,fontWeight:600,background:M_COLOR,color:"white",border:"none",cursor:"pointer"}}>+ Add</button>
           </div>
 
@@ -1324,8 +1480,8 @@ export default function App() {
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead>
-                <tr style={{borderBottom:"1px solid var(--color-border-secondary)"}}>
-                  {["Date","Routine","Type",""].map(h=><th key={h} style={{textAlign:"left",padding:"6px 8px",fontSize:11,fontWeight:600,color:"var(--color-text-secondary)",whiteSpace:"nowrap"}}>{h}</th>)}
+                <tr style={{borderBottom:"1px solid "+DARK.border}}>
+                  {["Date","Routine","Type",""].map(h=><th key={h} style={{textAlign:"left",padding:"6px 8px",fontSize:11,fontWeight:600,color:DARK.text2,whiteSpace:"nowrap"}}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -1334,49 +1490,49 @@ export default function App() {
                   const typeColor=r?.type==="Stretching"?S_COLOR:M_COLOR;
                   return (
                     <React.Fragment key={c.id}>
-                    <tr style={{borderBottom:editCompletionId===c.id?"none":"0.5px solid var(--color-border-tertiary)",background:idx%2===0?"transparent":"var(--color-background-secondary)"}}>
-                      <td style={{padding:"8px 8px",whiteSpace:"nowrap",color:"var(--color-text-secondary)"}}>{fmtDate(c.date)}</td>
+                    <tr style={{borderBottom:editCompletionId===c.id?"none":"0.5px solid "+DARK.border2,background:idx%2===0?"transparent":DARK.bg2}}>
+                      <td style={{padding:"8px 8px",whiteSpace:"nowrap",color:DARK.text2}}>{fmtDate(c.date)}</td>
                       <td style={{padding:"8px 8px",fontWeight:500}}>
-                        <div>{c.routineName}</div>
-                        {c.exerciseIds&&c.exerciseIds.length>0&&(
-                          <details style={{marginTop:3}}>
-                            <summary style={{fontSize:11,color:"var(--color-text-tertiary)",cursor:"pointer",userSelect:"none"}}>
-                              {c.exerciseIds.length} exercises
-                            </summary>
-                            <div style={{marginTop:4,display:"flex",flexDirection:"column",gap:2}}>
-                              {c.exerciseIds.map(id=>{
-                                const ex=allExercises.find(e=>e.id===id);
-                                return ex?<span key={id} style={{fontSize:11,color:"var(--color-text-secondary)",paddingLeft:8}}>&#8226; {ex.name}</span>:null;
-                              })}
+                        {c.exerciseIds&&c.exerciseIds.length>0
+                          ? <div>
+                              <span onClick={()=>setExpandedHistory(v=>v===c.id?null:c.id)} style={{cursor:"pointer",borderBottom:"1px dotted "+DARK.border2,color:DARK.text}}>{c.routineName}</span>
+                              {expandedHistory===c.id&&(
+                                <div style={{marginTop:6,display:"flex",flexDirection:"column",gap:2}}>
+                                  {c.exerciseIds.map(id=>{
+                                    const ex=allExercises.find(e=>e.id===id);
+                                    return ex?<span key={id} style={{fontSize:11,color:DARK.text2,paddingLeft:8}}>&#8226; {ex.name}</span>:null;
+                                  })}
+                                </div>
+                              )}
                             </div>
-                          </details>
-                        )}
+                          : <span style={{color:DARK.text}}>{c.routineName}</span>
+                        }
                       </td>
                       <td style={{padding:"8px 8px"}}>
                         {(()=>{const t=r?.type||c.routineType;const tc=t==="Stretching"?S_COLOR:M_COLOR;return t?<span style={{fontSize:11,padding:"1px 7px",borderRadius:10,background:tc+"22",color:tc,border:`0.5px solid ${tc}44`,whiteSpace:"nowrap"}}>{t}</span>:null;})()}
                       </td>
                       <td style={{padding:"8px 4px",textAlign:"right",whiteSpace:"nowrap"}}>
-                        <button onClick={()=>{if(editCompletionId===c.id){setEditCompletionId(null);}else{setEditCompletionId(c.id);setEditCompletionFields({date:c.date,routineId:c.routineId,routineName:c.routineName});}}} style={{background:"none",border:"none",cursor:"pointer",color:"var(--color-text-secondary)",fontSize:12,padding:"2px 6px",marginRight:2}}>Edit</button>
+                        <button onClick={()=>{if(editCompletionId===c.id){setEditCompletionId(null);}else{setEditCompletionId(c.id);setEditCompletionFields({date:c.date,routineId:c.routineId,routineName:c.routineName});}}} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:12,padding:"2px 6px",marginRight:2}}>Edit</button>
                         <button onClick={()=>setConfirmDelete({label:`${c.routineName} on ${fmtDate(c.date)}`,onConfirm:()=>deleteCompletion(c.id)})} style={{background:"none",border:"none",cursor:"pointer",color:"#C00000",fontSize:18,fontWeight:700,lineHeight:1,padding:"2px 6px"}}>&#215;</button>
                       </td>
                     </tr>
                     {editCompletionId===c.id&&(
-                      <tr style={{borderBottom:"0.5px solid var(--color-border-tertiary)",background:"var(--color-background-tertiary)"}}>
+                      <tr style={{borderBottom:"0.5px solid "+DARK.border2,background:DARK.bg3}}>
                         <td colSpan={4} style={{padding:"8px 12px"}}>
                           <div style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap"}}>
                             <div>
-                              <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>Date</div>
+                              <div style={{fontSize:10,color:DARK.text2,marginBottom:3}}>Date</div>
                               <input type="date" value={editCompletionFields.date||""} onChange={ev=>setEditCompletionFields(p=>({...p,date:ev.target.value}))} style={{fontSize:12,padding:"4px 6px"}}/>
                             </div>
                             <div style={{flex:1,minWidth:120}}>
-                              <div style={{fontSize:10,color:"var(--color-text-secondary)",marginBottom:3}}>Routine</div>
+                              <div style={{fontSize:10,color:DARK.text2,marginBottom:3}}>Routine</div>
                               <select value={editCompletionFields.routineId||""} onChange={ev=>{const r2=allRoutines.find(r=>r.id===ev.target.value);setEditCompletionFields(p=>({...p,routineId:ev.target.value,routineName:r2?.name||p.routineName}));}} style={{width:"100%",fontSize:12}}>
                                 {sortRoutines(allRoutines).map(r2=><option key={r2.id} value={r2.id}>{r2.name}</option>)}
                               </select>
                             </div>
                             <div style={{display:"flex",gap:6}}>
                               <button onClick={()=>{const updated=completions.map(x=>x.id===c.id?{...x,...editCompletionFields}:x);setCompletions(updated);save(updated,customRoutines,customExercises);const edited=updated.find(x=>x.id===c.id);if(edited&&!c.id.startsWith("h-"))sbSaveCompletion(edited);setEditCompletionId(null);showToast("Updated");}} style={{padding:"5px 12px",borderRadius:6,fontSize:12,fontWeight:600,background:S_COLOR,color:"white",border:"none",cursor:"pointer"}}>Save</button>
-                              <button onClick={()=>setEditCompletionId(null)} style={{padding:"5px 10px",borderRadius:6,fontSize:12,background:"none",border:"0.5px solid var(--color-border-tertiary)",color:"var(--color-text-secondary)",cursor:"pointer"}}>Cancel</button>
+                              <button onClick={()=>setEditCompletionId(null)} style={{padding:"5px 10px",borderRadius:6,fontSize:12,background:"none",border:"0.5px solid "+DARK.border2,color:DARK.text2,cursor:"pointer"}}>Cancel</button>
                             </div>
                           </div>
                         </td>
@@ -1391,6 +1547,7 @@ export default function App() {
         </div>
       )}
     </div>
+    </>
   );
 }
 const HISTORY_SEED = [
