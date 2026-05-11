@@ -1287,9 +1287,12 @@ export default function App() {
   );
 
   if (activeWorkout) return (
+    <>
+    <style>{DARK_STYLE}</style>
     <div style={{padding:"20px 0"}}>
       <WorkoutView routine={activeWorkout.routine} exercises={activeWorkout.exercises} onComplete={completeWorkout} onExit={()=>setActiveWorkout(null)} onUpdateExercise={updateExercise} onSaveRoutine={activeWorkout.routine.id?.startsWith("gen-")?saveGeneratedRoutine:null} exerciseCompletionCounts={exerciseCompletionCounts}/>
     </div>
+    </>
   );
 
   // ── Render ─────────────────────────────────────────────────
