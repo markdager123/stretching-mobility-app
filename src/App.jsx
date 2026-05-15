@@ -335,7 +335,7 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                     </div>
                     <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
                       <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                        {(()=>{const ld=exerciseLastCompleted?.[ex.id];const ds=ld?Math.floor((new Date()-new Date(ld+"T12:00:00"))/86400000):null;const cnt=exerciseCompletionCounts[ex.id]||0;return<>{ds!==null&&<span style={{fontSize:10,color:DARK.text3}}>{ds}d</span>}{cnt>0&&<span style={{fontSize:10,color:DARK.text3}}>{cnt}&#215;</span>}</>})()}
+                        {(()=>{const ld=exerciseLastCompleted?.[ex.id];const ds=ld?Math.floor((new Date()-new Date(ld+"T12:00:00"))/86400000):null;const cnt=exerciseCompletionCounts[ex.id]||0;return <>{ds!==null&&<span style={{fontSize:10,color:DARK.text3}}>{ds}d</span>}{cnt>0&&<span style={{fontSize:10,color:DARK.text3}}>{cnt}&#215;</span>}</>})()}
                         {ex.video&&<a href={ex.video} target="_blank" rel="noreferrer" style={{fontSize:14,color:DARK.text2,textDecoration:"none"}}>&#9654;</a>}
                         <button onClick={()=>isEditing?setEditId(null):startEdit(ex)} style={{fontSize:11,padding:"2px 8px",borderRadius:5,background:"none",border:"0.5px solid "+DARK.border,color:DARK.text2,cursor:"pointer"}}>{isEditing?"Cancel":"Edit"}</button>
                       </div>
