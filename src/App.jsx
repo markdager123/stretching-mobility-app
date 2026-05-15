@@ -338,7 +338,7 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                   <span style={{fontSize:14,fontWeight:600,color:DARK.text,flex:1,minWidth:0,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingLeft:3}}>{ex.name}</span>
                   {ex.favorite==="Favorite"&&<span style={{fontSize:13,color:"#E8B84B",flexShrink:0}}>&#9733;</span>}
                   {ex.workOn==="Work On"&&<span style={{fontSize:11,color:"#e06666",flexShrink:0}}>&#128170;</span>}
-                  {exerciseLastCompleted?.[ex.id]&&<span style={{fontSize:10,color:DARK.text3,flexShrink:0}}>{Math.floor((new Date()-new Date(exerciseLastCompleted[ex.id]+"T12:00:00"))/86400000)}d</span>}
+                  {exerciseLastCompleted?.[ex.id]&&<span style={{fontSize:10,color:DARK.text3,flexShrink:0}}>{Math.floor((new Date(new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"})+"T00:00:00")-new Date(exerciseLastCompleted[ex.id]+"T00:00:00"))/86400000)}d</span>}
                   {(exerciseCompletionCounts[ex.id]||0)>0&&<span style={{fontSize:10,color:DARK.text3,flexShrink:0}}>{exerciseCompletionCounts[ex.id]}&#215;</span>}
                   {ex.video&&<a href={ex.video} target="_blank" rel="noreferrer" style={{fontSize:13,color:DARK.text2,textDecoration:"none",flexShrink:0}}>&#9654;</a>}
                   <button onClick={()=>isEditing?setEditId(null):startEdit(ex)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,background:"none",border:"0.5px solid "+DARK.border,color:DARK.text2,cursor:"pointer",flexShrink:0}}>{isEditing?"Cancel":"Edit"}</button>
@@ -461,7 +461,7 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount, lastDate }) {
         {allTags.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Muscles: </span>{allTags.join(", ")}</div>}
         {e.bodyPosition && !editing && <div><span style={{color:DARK.text2}}>Position: </span>{e.bodyPosition}</div>}
         {!editing && e.reps && e.type!=="Stretching" && e.reps!=="N/A" && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Reps: </span>{e.reps}</div>}
-        {lastDate&&<div><span style={{color:DARK.text2}}>Days Since: </span>{Math.floor((new Date()-new Date(lastDate+"T12:00:00"))/86400000)}</div>}
+        {lastDate&&<div><span style={{color:DARK.text2}}>Days Since: </span>{Math.floor((new Date(new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"})+"T00:00:00")-new Date(lastDate+"T00:00:00"))/86400000)}</div>}
         {(liveCount||0)>0&&<div><span style={{color:DARK.text2}}>Completions: </span>{liveCount}</div>}
         {e.routines && e.routines.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Routines: </span>{e.routines.join(", ")}</div>}
       </div>
@@ -807,7 +807,7 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
                   </div>
                 </div>
                 <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                  {exerciseLastCompleted[ex.id]&&<span style={{fontSize:10,color:DARK.text3,marginRight:1}}>{Math.floor((new Date()-new Date(exerciseLastCompleted[ex.id]+"T12:00:00"))/86400000)}d</span>}
+                  {exerciseLastCompleted[ex.id]&&<span style={{fontSize:10,color:DARK.text3,marginRight:1}}>{Math.floor((new Date(new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"})+"T00:00:00")-new Date(exerciseLastCompleted[ex.id]+"T00:00:00"))/86400000)}d</span>}
                   {(exerciseCompletionCounts[ex.id]||0)>0&&<span style={{fontSize:10,color:DARK.text3,marginRight:2}}>{exerciseCompletionCounts[ex.id]}&#215;</span>}
                   <button onClick={()=>doSwap(i)} style={{padding:"3px 8px",borderRadius:5,fontSize:11,background:"none",color:S_COLOR,border:`0.5px solid ${S_COLOR}66`,cursor:"pointer"}}>Swap</button>
                 </div>
@@ -1214,7 +1214,7 @@ export default function App() {
   }, [completions, allRoutines]);
  // For each type, compute which exercise IDs appeared in the last N completions
   const logCompletion = useCallback((routine, exerciseIds) => {
-    const c={id:`n-${Date.now()}`,routineId:routine.id,routineName:routine.name,routineType:routine.type||"",date:new Date().toISOString().split("T")[0],exerciseIds:exerciseIds||[]};
+    const c={id:`n-${Date.now()}`,routineId:routine.id,routineName:routine.name,routineType:routine.type||"",date:new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"}),exerciseIds:exerciseIds||[]};
     const updated=[c,...completions]; setCompletions(updated); save(updated,customRoutines,customExercises);
     sbSaveCompletion(c);
     showToast(`Logged ${routine.name}`);
@@ -1397,7 +1397,7 @@ export default function App() {
                 </div>
                 <div style={{marginTop:5,fontSize:12,color:DARK.text2,display:"flex",gap:12,flexWrap:"wrap"}}>
                   {last
-                    ? <span>{Math.floor((new Date()-new Date(last+"T12:00:00"))/86400000)} days since last completion</span>
+                    ? <span>{Math.floor((new Date(new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"})+"T00:00:00")-new Date(last+"T00:00:00"))/86400000)} days since last completion</span>
                     : <span>Never completed</span>}
                   {count>0&&<span>{count} Completions</span>}
                 </div>
@@ -1474,7 +1474,7 @@ export default function App() {
                         {e.workOn==="Work On"&&<span style={{fontSize:12,color:"#e06666",lineHeight:1}}>&#128170;</span>}
                         {(exerciseCompletionCounts[e.id]||0)===0
                           ? <span style={{fontSize:11,color:"#ff6666",fontWeight:600}}>Never Completed</span>
-                          : <>{exerciseLastCompleted[e.id]&&<span style={{fontSize:11,color:DARK.text3}}>{Math.floor((new Date()-new Date(exerciseLastCompleted[e.id]+"T12:00:00"))/86400000)}d</span>}<span style={{fontSize:11,color:DARK.text3,fontWeight:500}}>{exerciseCompletionCounts[e.id]}&#215;</span></>}
+                          : <>{exerciseLastCompleted[e.id]&&<span style={{fontSize:11,color:DARK.text3}}>{Math.floor((new Date(new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"})+"T00:00:00")-new Date(exerciseLastCompleted[e.id]+"T00:00:00"))/86400000)}d</span>}<span style={{fontSize:11,color:DARK.text3,fontWeight:500}}>{exerciseCompletionCounts[e.id]}&#215;</span></>}
                       </div>
                     </div>
                     <div style={{marginTop:5,display:"flex",gap:4,flexWrap:"wrap"}}>
@@ -1603,8 +1603,10 @@ export default function App() {
                             </div>
                             <div style={{flex:1,minWidth:120}}>
                               <div style={{fontSize:10,color:DARK.text2,marginBottom:3}}>Routine</div>
-                              <select value={editCompletionFields.routineId||""} onChange={ev=>{const r2=allRoutines.find(r=>r.id===ev.target.value);setEditCompletionFields(p=>({...p,routineId:ev.target.value,routineName:r2?.name||p.routineName}));}} style={{width:"100%",fontSize:12}}>
+                              <select value={editCompletionFields.routineId||""} onChange={ev=>{const genNames={"gen-s":"S (generated)","gen-m":"M (generated)"};const r2=allRoutines.find(r=>r.id===ev.target.value);setEditCompletionFields(p=>({...p,routineId:ev.target.value,routineName:r2?.name||genNames[ev.target.value]||p.routineName}));}} style={{width:"100%",fontSize:12}}>
                                 {sortRoutines(allRoutines).map(r2=><option key={r2.id} value={r2.id}>{r2.name}</option>)}
+                                <option value="gen-s" style={{background:DARK.bg3}}>S (generated)</option>
+                                <option value="gen-m" style={{background:DARK.bg3}}>M (generated)</option>
                               </select>
                             </div>
                             <div style={{display:"flex",gap:6}}>
