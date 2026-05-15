@@ -275,7 +275,7 @@ function Tag({ label, color }) {
 function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise, onSaveRoutine, onSwapExercise, exerciseCompletionCounts, exerciseLastCompleted }) {
   const [editId, setEditId] = useState(null);
   const [editFields, setEditFields] = useState({});
-  const [swapHistory, setSwapHistory] = useState({}); // exId → Set of previously shown IDs
+  const [swapSeq, setSwapSeq] = useState({}); // slotIdx → ordered array of shown exercise IDs
   const startEdit = ex => { setEditId(ex.id); setEditFields({name:ex.name||"",reps:ex.type==="Stretching"?(ex.reps||"N/A"):ex.reps||"",video:ex.video||"",muscleTags:[...(ex.muscleTags||[])],bodyPosition:ex.bodyPosition||"",type:ex.type||"Stretching",favorite:ex.favorite||"No",workOn:ex.workOn||"No"}); };
   const saveEdit = ex => {
     onUpdateExercise(ex.id, editFields);
@@ -283,28 +283,38 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
   };
 
   const doSwapInWorkout = (ex, idx) => {
-    const history = swapHistory[ex.id] || new Set();
-    const usedIds = new Set(exercises.map(e => e.id));
-    const excludeIds = new Set([...history, ...usedIds]);
+    // seq = ordered list of exercise IDs shown at this slot (oldest first)
+    const seq = swapSeq[idx] || [];
+    const fullSeq = seq.length === 0 ? [ex.id] : seq;
+
+    const otherIds = new Set(exercises.filter((_,i2)=>i2!==idx).map(e=>e.id));
+    const shownIds = new Set(fullSeq);
     const currentNeverDone = (exerciseCompletionCounts[ex.id]||0) === 0;
-    const score = e => { const r=exerciseCompletionCounts[e.id]||0; return (e.favorite==="Favorite"||e.workOn==="Work On")?r*0.5:r; };
-    const baseFilter = e => e.type===routine.type && !excludeIds.has(e.id);
-    const sameGroup = EXERCISES.filter(e => baseFilter(e) &&
-      (e.bodyRegion===ex.bodyRegion || (e.muscleTags||[]).some(t=>(ex.muscleTags||[]).includes(t))));
-    const broader = EXERCISES.filter(e => baseFilter(e) && !sameGroup.find(s=>s.id===e.id));
-    const pickFrom = pool => {
-      const never = pool.filter(e=>(exerciseCompletionCounts[e.id]||0)===0);
-      const done = pool.filter(e=>(exerciseCompletionCounts[e.id]||0)>0).sort((a,b)=>score(a)-score(b));
-      return currentNeverDone && never.length>0 ? never[0] : done.length>0 ? done[0] : never[0]||null;
-    };
-    const newEx = pickFrom(sameGroup) || pickFrom(broader);
+    const score = e => { const r=exerciseCompletionCounts[e.id]||0; return (e.favorite==="Favorite"||e.workOn==="Work On")?r*0.667:r; };
+
+    // Pool: exercises of same type, not yet shown at this slot, not in other slots
+    let pool = EXERCISES.filter(e => e.type===routine.type && !shownIds.has(e.id) && !otherIds.has(e.id));
+
+    // Broadening pass: if same-muscle pool empty, use any not-shown, not-other
+    // Cycling: if fully exhausted, wrap back through the slot sequence
+    if (pool.length === 0 && fullSeq.length >= 2) {
+      const cycleId = fullSeq[(fullSeq.lastIndexOf(ex.id) - 1 + fullSeq.length) % fullSeq.length];
+      const cycleEx = EXERCISES.find(e => e.id === cycleId);
+      if (cycleEx) { onSwapExercise(idx, cycleEx); return; }
+    }
+    if (pool.length === 0) return;
+
+    // Prefer same muscle/region, fall back to full pool
+    const sameGroup = pool.filter(e =>
+      e.bodyRegion===ex.bodyRegion || (e.muscleTags||[]).some(t=>(ex.muscleTags||[]).includes(t))
+    );
+    const candidates = sameGroup.length > 0 ? sameGroup : pool;
+    const never = candidates.filter(e=>(exerciseCompletionCounts[e.id]||0)===0);
+    const done = candidates.filter(e=>(exerciseCompletionCounts[e.id]||0)>0).sort((a,b)=>score(a)-score(b));
+    const newEx = (currentNeverDone && never.length>0) ? never[0] : done.length>0 ? done[0] : never[0]||candidates[0];
+
     if (!newEx) return;
-    const newHistory = new Set([...history, ex.id]);
-    setSwapHistory(prev => ({...prev, [ex.id]: newHistory}));
-    // Replace in place — no resorting
-    const newExercises = [...exercises];
-    newExercises[idx] = newEx;
-    // Call parent to update exercises list
+    setSwapSeq(prev => ({...prev, [idx]: [...fullSeq, newEx.id]}));
     onSwapExercise(idx, newEx);
   };
   return (
@@ -321,38 +331,27 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
           const allTags = [...new Set(ex.muscleTags||[ex.bodyRegion])].filter(Boolean);
           return (
             <div key={ex.id} style={{borderRadius:10,border:"0.5px solid "+DARK.border2,background:DARK.bg,overflow:"hidden"}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"11px 13px"}}>
-                <span style={{fontSize:12,color:DARK.text3,fontWeight:500,minWidth:18,textAlign:"right",paddingTop:3}}>{i+1}</span>
-                <div style={{flex:1,minWidth:0}}>
-                  {/* Top row: name | controls */}
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                        <span style={{fontSize:15,fontWeight:600,color:DARK.text,lineHeight:1.3}}>{ex.name}</span>
-                        {ex.favorite==="Favorite"&&<span style={{fontSize:14,color:"#E8B84B"}}>&#9733;</span>}
-                        {ex.workOn==="Work On"&&<span style={{fontSize:12,color:"#e06666"}}>&#128170;</span>}
-                      </div>
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
-                      <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                        {exerciseLastCompleted?.[ex.id]&&<span style={{fontSize:10,color:DARK.text3}}>{Math.floor((new Date()-new Date(exerciseLastCompleted[ex.id]+"T12:00:00"))/86400000)}d</span>}{(exerciseCompletionCounts[ex.id]||0)>0&&<span style={{fontSize:10,color:DARK.text3}}>{exerciseCompletionCounts[ex.id]}&#215;</span>}
-                        {ex.video&&<a href={ex.video} target="_blank" rel="noreferrer" style={{fontSize:14,color:DARK.text2,textDecoration:"none"}}>&#9654;</a>}
-                        <button onClick={()=>isEditing?setEditId(null):startEdit(ex)} style={{fontSize:11,padding:"2px 8px",borderRadius:5,background:"none",border:"0.5px solid "+DARK.border,color:DARK.text2,cursor:"pointer"}}>{isEditing?"Cancel":"Edit"}</button>
-                      </div>
-                      {!isEditing&&onSwapExercise&&<button onClick={()=>doSwapInWorkout(ex,i)} style={{fontSize:11,padding:"2px 6px",borderRadius:5,background:"none",border:`0.5px solid ${S_COLOR}66`,color:S_COLOR,cursor:"pointer",marginTop:2}}>Swap</button>}
-                    </div>
-                  </div>
-                  {!isEditing && ex.reps && ex.type!=="Stretching" && <div style={{fontSize:12,color:DARK.text2,marginTop:2}}>{ex.reps}</div>}
-                  {/* Tags row: tags + never completed on left, body position pinned right */}
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:5,gap:4}}>
-                    <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",flex:1,minWidth:0}}>
-                      {allTags.map(t => { const tc=REGION_COLORS[t]||"#888"; return <span key={t} style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:tc+"20",color:tc,border:`0.5px solid ${tc}44`}}>{t}</span>; })}
-                      {ex.bodyPosition&&!isEditing&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:DARK.bg3,color:DARK.text3,border:"0.5px solid "+DARK.border}}>{ex.bodyPosition}</span>}
-                      {(exerciseCompletionCounts[ex.id]||0)===0&&!isEditing&&<span style={{fontSize:10,color:"#ff6666",fontWeight:600}}>Never Completed</span>}
-                    </div>
-                    {ex.bodyPosition&&!isEditing&&<span style={{fontSize:10,color:DARK.text3,flexShrink:0,marginLeft:6}}>{ex.bodyPosition}</span>}
-                  </div>
+                           <div style={{padding:"11px 13px"}}>
+                {/* Line 1: number · name · icons · stats · video · edit — all on one row */}
+                <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"nowrap",overflow:"hidden"}}>
+                  <span style={{fontSize:12,color:DARK.text3,fontWeight:500,flexShrink:0}}>{i+1}</span>
+                  <span style={{fontSize:14,fontWeight:600,color:DARK.text,flex:1,minWidth:0,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ex.name}</span>
+                  {ex.favorite==="Favorite"&&<span style={{fontSize:13,color:"#E8B84B",flexShrink:0}}>&#9733;</span>}
+                  {ex.workOn==="Work On"&&<span style={{fontSize:11,color:"#e06666",flexShrink:0}}>&#128170;</span>}
+                  {exerciseLastCompleted?.[ex.id]&&<span style={{fontSize:10,color:DARK.text3,flexShrink:0}}>{Math.floor((new Date()-new Date(exerciseLastCompleted[ex.id]+"T12:00:00"))/86400000)}d</span>}
+                  {(exerciseCompletionCounts[ex.id]||0)>0&&<span style={{fontSize:10,color:DARK.text3,flexShrink:0}}>{exerciseCompletionCounts[ex.id]}&#215;</span>}
+                  {ex.video&&<a href={ex.video} target="_blank" rel="noreferrer" style={{fontSize:13,color:DARK.text2,textDecoration:"none",flexShrink:0}}>&#9654;</a>}
+                  <button onClick={()=>isEditing?setEditId(null):startEdit(ex)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,background:"none",border:"0.5px solid "+DARK.border,color:DARK.text2,cursor:"pointer",flexShrink:0}}>{isEditing?"Cancel":"Edit"}</button>
                 </div>
+                {/* Line 2: indented to align with name, tags left, swap right */}
+                {!isEditing&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:4,gap:4,paddingLeft:10}}>
+                  <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",flex:1,minWidth:0}}>
+                    {allTags.map(t=>{const tc=REGION_COLORS[t]||"#888";return <span key={t} style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:tc+"20",color:tc,border:`0.5px solid ${tc}44`}}>{t}</span>;})}
+                    {ex.bodyPosition&&<span style={{fontSize:10,color:DARK.text3,marginLeft:2}}>{ex.bodyPosition}</span>}
+                    {(exerciseCompletionCounts[ex.id]||0)===0&&<span style={{fontSize:10,color:"#ff6666",fontWeight:600}}>Never Completed</span>}
+                  </div>
+                  {onSwapExercise&&<button onClick={()=>doSwapInWorkout(ex,i)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,background:"none",border:"0.5px solid "+DARK.border,color:DARK.text2,cursor:"pointer",flexShrink:0}}>Swap</button>}
+                </div>}
               </div>
               {isEditing && (
                 <div style={{padding:"10px 13px 13px",borderTop:"0.5px solid "+DARK.border2,background:DARK.bg2,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -367,9 +366,9 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                       <span style={{fontSize:18,color:"#E8B84B"}}>&#9733;</span>
                       <span style={{fontSize:12,color:editFields.favorite==="Favorite"?"#C49A00":DARK.text2,fontWeight:editFields.favorite==="Favorite"?600:400}}>Favorite</span>
                     </button>
-                    <button onClick={()=>setEditFields(p=>({...p,workOn:p.workOn==="Work On"?"No":"Work On"}))} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 10px",borderRadius:8,border:"0.5px solid "+(editFields.workOn==="Work On"?"#e0666655":DARK.border),background:editFields.workOn==="Work On"?"#e0666622":DARK.bg3,cursor:"pointer"}}>
+                    <button onClick={()=>setEditFields(p=>({...p,workOn:p.workOn==="Work On"?"No":"Work On"}))} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 10px",borderRadius:8,border:"0.5px solid "+(editFields.workOn==="Work On"?"#E8B84B66":DARK.border),background:editFields.workOn==="Work On"?"#E8B84B22":DARK.bg3,cursor:"pointer"}}>
                       <span style={{fontSize:12,color:"#e06666"}}>&#128170;</span>
-                      <span style={{fontSize:12,color:editFields.workOn==="Work On"?"#e06666":DARK.text2,fontWeight:editFields.workOn==="Work On"?600:400}}>Work On</span>
+                      <span style={{fontSize:12,color:editFields.workOn==="Work On"?"#E8B84B":DARK.text2,fontWeight:editFields.workOn==="Work On"?600:400}}>Work On</span>
                     </button>
                   </div>
                   <div style={{gridColumn:"1/-1",marginBottom:4}}>
@@ -614,7 +613,7 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
       // Score exercises: blend completion count (80%) + recency (20%)
       // FAV/IMPROVE halves effective done count (2:1 boost)
       const today = new Date();
-      const MAX_DONE = 30;  // normalize completion counts against this cap
+      const MAX_DONE = Math.max(1, ...EXERCISES.filter(e=>e.type===type).map(e=>exerciseCompletionCounts[e.id]||0)); // dynamic cap
       const MAX_DAYS = 90;  // recency cap in days
 
       // Build scored candidates
@@ -632,8 +631,7 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
       const allCandidates = EXERCISES.filter(e => e.type === type).map(e => {
         const rarity = exerciseRoutineCount[e.id]||0;
         const rawDone = exerciseCompletionCounts[e.id]||0;
-        const boosted = (e.favorite==="Favorite"||e.workOn==="Work On") ? rawDone*0.5 : rawDone;
-        const normDone = Math.min(boosted, MAX_DONE) / MAX_DONE;
+        const normDone = Math.min(rawDone, MAX_DONE) / MAX_DONE;
 
         const lastDate = exerciseLastCompleted[e.id];
         const daysSince = lastDate
@@ -646,7 +644,11 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
         const inLast6 = recent.last6.has(e.id);
         const recencyPenalty = inLast3 ? 0.8 : inLast6 ? 0.35 : 0;
 
-        const score = normDone * 0.55 + (1 - normRecency) * 0.25 + recencyPenalty + (rarity > 5 ? 0.05 : 0);
+        // Small random jitter (±10%) for variety between regenerations
+        const jitter = (Math.random() - 0.5) * 0.2;
+        // Equal weight: 50% completion count, 50% recency. No rarity penalty.
+        const favBoost = (e.favorite==="Favorite"||e.workOn==="Work On") ? 0.667 : 1.0;
+        const score = (normDone * 0.5 + (1 - normRecency) * 0.5 + recencyPenalty + jitter) * favBoost;
 
         const neverDone = (exerciseCompletionCounts[e.id]||0) === 0;
         const flags = [e.favorite==="Favorite"?"FAV":"", e.workOn==="Work On"?"IMPROVE":""].filter(Boolean).join(",");
@@ -720,36 +722,29 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
     const current = slot.ex;
     const swappedOut = slot.swappedOut || new Set();
     const usedIds = new Set(exercises.map(item=>item.ex.id));
-    const excludeIds = new Set([...swappedOut, ...usedIds]); // never revisit prior swaps
     const currentNeverDone = (exerciseCompletionCounts[current.id]||0) === 0;
+    const score = e => { const r=exerciseCompletionCounts[e.id]||0; return (e.favorite==="Favorite"||e.workOn==="Work On")?r*0.5:r; };
 
-    const score = e => {
-      const rawDone = exerciseCompletionCounts[e.id]||0;
-      const boosted = (e.favorite==="Favorite"||e.workOn==="Work On") ? rawDone*0.5 : rawDone;
-      return boosted;
+    // After 5 swaps, reset soft exclusions (allow revisiting earlier swaps)
+    const softExclude = swappedOut.size < 5
+      ? new Set([...swappedOut, ...usedIds])
+      : new Set([...usedIds]);
+
+    const pool = EXERCISES.filter(e => e.type===routineType && !softExclude.has(e.id));
+    const fallback = pool.length > 0 ? pool : EXERCISES.filter(e => e.type===routineType && !usedIds.has(e.id));
+
+    const pickFrom = candidates => {
+      const never = candidates.filter(e=>(exerciseCompletionCounts[e.id]||0)===0);
+      const done = candidates.filter(e=>(exerciseCompletionCounts[e.id]||0)>0).sort((a,b)=>score(a)-score(b));
+      return currentNeverDone && never.length>0 ? never[0] : done.length>0 ? done[0] : never[0]||null;
     };
 
-    // Build candidate pool: start same muscle/region, then broaden if exhausted
-    const baseFilter = e => e.type===routineType && !excludeIds.has(e.id);
-    const sameGroup = EXERCISES.filter(e => baseFilter(e) &&
-      (e.bodyRegion===current.bodyRegion || (e.muscleTags||[]).some(t=>(current.muscleTags||[]).includes(t))));
-    const broader = EXERCISES.filter(e => baseFilter(e) && !sameGroup.find(s=>s.id===e.id));
-
-    // Respect never-done rule: if current is never-done, prefer never-done swap
-    const pickFrom = pool => {
-      const neverPool = pool.filter(e=>(exerciseCompletionCounts[e.id]||0)===0);
-      const donePool = pool.filter(e=>(exerciseCompletionCounts[e.id]||0)>0).sort((a,b)=>score(a)-score(b));
-      return currentNeverDone && neverPool.length>0 ? neverPool[0]
-           : donePool.length>0 ? donePool[0]
-           : neverPool[0] || null;
-    };
-
-    const newEx = pickFrom(sameGroup) || pickFrom(broader);
+    const newEx = pickFrom(fallback);
     if (!newEx) return;
 
     const newSwappedOut = new Set([...swappedOut, current.id]);
     setExercises(p=>{
-      const updated = p.map((item,idx)=>idx===i ? {ex:newEx, swappedOut:newSwappedOut} : item);
+      const updated = p.map((item,idx2)=>idx2===i ? {ex:newEx, swappedOut:newSwappedOut} : item);
       return [...updated].sort((a,b)=>{
         const ai=POSITION_ORDER.indexOf(a.ex.bodyPosition); const bi=POSITION_ORDER.indexOf(b.ex.bodyPosition);
         return (ai===-1?99:ai)-(bi===-1?99:bi);
@@ -903,8 +898,7 @@ export default function App() {
   const [showAiModal, setShowAiModal] = useState(false);
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showExercisesToAdd, setShowExercisesToAdd] = useState(false);
-  const [exercisesToAddNotes, setExercisesToAddNotes] = useState("• Single Knee to Chest Stretch
-");
+  const [exercisesToAddNotes, setExercisesToAddNotes] = useState("• Single Knee to Chest Stretch\n");
   const [showAddCompletion, setShowAddCompletion] = useState(false);
   const [editCompletionId, setEditCompletionId] = useState(null);
   const [expandedHistory, setExpandedHistory] = useState(null);
@@ -1614,6 +1608,7 @@ export default function App() {
                             <div style={{display:"flex",gap:6}}>
                               <button onClick={()=>{const updated=completions.map(x=>x.id===c.id?{...x,...editCompletionFields}:x);setCompletions(updated);save(updated,customRoutines,customExercises);const edited=updated.find(x=>x.id===c.id);if(edited&&!c.id.startsWith("h-"))sbSaveCompletion(edited);setEditCompletionId(null);showToast("Updated");}} style={{padding:"5px 12px",borderRadius:6,fontSize:12,fontWeight:600,background:S_COLOR,color:"white",border:"none",cursor:"pointer"}}>Save</button>
                               <button onClick={()=>setEditCompletionId(null)} style={{padding:"5px 10px",borderRadius:6,fontSize:12,background:"none",border:"0.5px solid "+DARK.border2,color:DARK.text2,cursor:"pointer"}}>Cancel</button>
+                              <button onClick={()=>{setEditCompletionId(null);setConfirmDelete({label:`${c.routineName} on ${fmtDate(c.date)}`,onConfirm:()=>deleteCompletion(c.id)});}} style={{padding:"5px 10px",borderRadius:6,fontSize:12,background:"none",border:"0.5px solid #e0444466",color:"#e04444",cursor:"pointer"}}>Delete</button>
                             </div>
                           </div>
                         </td>
