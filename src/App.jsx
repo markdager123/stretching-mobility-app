@@ -338,8 +338,9 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                   <span style={{fontSize:14,fontWeight:600,color:DARK.text,flex:1,minWidth:0,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingLeft:3}}>{ex.name}</span>
                   {ex.favorite==="Favorite"&&<span style={{fontSize:13,color:"#E8B84B",flexShrink:0}}>&#9733;</span>}
                   {ex.workOn==="Work On"&&<span style={{fontSize:11,color:"#e06666",flexShrink:0}}>&#128170;</span>}
-                  {exerciseLastCompleted?.[ex.id]&&<span style={{fontSize:10,color:DARK.text3,flexShrink:0}}>{Math.floor((new Date(new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"})+"T00:00:00")-new Date(exerciseLastCompleted[ex.id]+"T00:00:00"))/86400000)}d</span>}
-                  {(exerciseCompletionCounts[ex.id]||0)>0&&<span style={{fontSize:10,color:DARK.text3,flexShrink:0}}>{exerciseCompletionCounts[ex.id]}&#215;</span>}
+                  {(exerciseCompletionCounts[ex.id]||0)===0
+                    ? <span style={{fontSize:10,color:"#ff6666",fontWeight:600,flexShrink:0}}>Never Completed</span>
+                    : <>{exerciseLastCompleted?.[ex.id]&&<span style={{fontSize:10,color:DARK.text3,flexShrink:0}}>{Math.floor((new Date(new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"})+"T00:00:00")-new Date(exerciseLastCompleted[ex.id]+"T00:00:00"))/86400000)}d</span>}<span style={{fontSize:10,color:DARK.text3,flexShrink:0}}>{exerciseCompletionCounts[ex.id]}&#215;</span></>}
                   {ex.video&&<a href={ex.video} target="_blank" rel="noreferrer" style={{fontSize:13,color:DARK.text2,textDecoration:"none",flexShrink:0}}>&#9654;</a>}
                   <button onClick={()=>isEditing?setEditId(null):startEdit(ex)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,background:"none",border:"0.5px solid "+DARK.border,color:DARK.text2,cursor:"pointer",flexShrink:0}}>{isEditing?"Cancel":"Edit"}</button>
                 </div>
@@ -350,7 +351,6 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                   <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",flex:1,minWidth:0}}>
                     {allTags.map(t=>{const tc=REGION_COLORS[t]||"#888";return <span key={t} style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:tc+"20",color:tc,border:`0.5px solid ${tc}44`}}>{t}</span>;})}
                     {ex.bodyPosition&&<span style={{fontSize:10,color:DARK.text3,marginLeft:2}}>{ex.bodyPosition}</span>}
-                    {(exerciseCompletionCounts[ex.id]||0)===0&&<span style={{fontSize:10,color:"#ff6666",fontWeight:600}}>Never Completed</span>}
                   </div>
                   {onSwapExercise&&<button onClick={()=>doSwapInWorkout(ex,i)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,background:"none",border:`0.5px solid ${S_COLOR}55`,color:S_COLOR,cursor:"pointer",flexShrink:0}}>Swap</button>}
                 </div>}
@@ -461,8 +461,10 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount, lastDate }) {
         {allTags.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Muscles: </span>{allTags.join(", ")}</div>}
         {e.bodyPosition && !editing && <div><span style={{color:DARK.text2}}>Position: </span>{e.bodyPosition}</div>}
         {!editing && e.reps && e.type!=="Stretching" && e.reps!=="N/A" && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Reps: </span>{e.reps}</div>}
-        {lastDate&&<div><span style={{color:DARK.text2}}>Days Since: </span>{Math.floor((new Date(new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"})+"T00:00:00")-new Date(lastDate+"T00:00:00"))/86400000)}</div>}
-        {(liveCount||0)>0&&<div><span style={{color:DARK.text2}}>Completions: </span>{liveCount}</div>}
+        <div style={{gridColumn:"1/-1",display:"flex",gap:16}}>
+          {lastDate&&<span><span style={{color:DARK.text2}}>Days Since: </span>{Math.floor((new Date(new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"})+"T00:00:00")-new Date(lastDate+"T00:00:00"))/86400000)}</span>}
+          {(liveCount||0)>0&&<span><span style={{color:DARK.text2}}>Completions: </span>{liveCount}</span>}
+        </div>
         {e.routines && e.routines.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Routines: </span>{e.routines.join(", ")}</div>}
       </div>
       {e.video && !editing && <a href={e.video} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:12,color:S_COLOR,textDecoration:"none",marginTop:8}}>&#9654; Watch video</a>}
@@ -1424,11 +1426,11 @@ export default function App() {
               const active=exFilterType===key;
               return <button key={key} onClick={()=>setExFilterType(key)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:active?color+"22":"none",color:active?color:DARK.text2,border:`0.5px solid ${active?color+"66":DARK.border2}`,cursor:"pointer"}}>{key}</button>;
             })}
-            <button onClick={()=>setFilterFav(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterFav?"#E8B84B22":"none",color:filterFav?"#E8B84B":DARK.text2,border:`0.5px solid ${filterFav?"#E8B84B66":DARK.border2}`,cursor:"pointer"}}>
-              <span style={{fontSize:15,color:"#E8B84B"}}>&#9733;</span> Favorite
+            <button onClick={()=>setFilterFav(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterFav?"#E8B84B22":"none",color:filterFav?"#E8B84B":DARK.text2,border:`0.5px solid ${filterFav?"#E8B84B66":DARK.border2}`,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+              <span style={{fontSize:16,color:"#E8B84B",lineHeight:1}}>&#9733;</span> Favorite
             </button>
-            <button onClick={()=>setFilterWorkOn(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterWorkOn?"#E8B84B22":"none",color:filterWorkOn?"#E8B84B":DARK.text2,border:`0.5px solid ${filterWorkOn?"#E8B84B66":DARK.border2}`,cursor:"pointer"}}>
-              <span style={{color:"#E8B84B",fontSize:12}}>&#128170;</span> Work On
+            <button onClick={()=>setFilterWorkOn(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterWorkOn?"#E8B84B22":"none",color:filterWorkOn?"#E8B84B":DARK.text2,border:`0.5px solid ${filterWorkOn?"#E8B84B66":DARK.border2}`,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+              <span style={{color:"#E8B84B",fontSize:12,lineHeight:1}}>&#128170;</span> Work On
             </button>
             <div style={{marginLeft:"auto",display:"flex",gap:4}}>
               {[["name","A-Z"],["completions","Most Completed"]].map(([val,label])=>(
