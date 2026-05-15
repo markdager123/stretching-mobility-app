@@ -335,7 +335,7 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                 {/* Line 1: number · name · icons · stats · video · edit — all on one row */}
                 <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"nowrap",overflow:"hidden"}}>
                   <span style={{fontSize:12,color:DARK.text3,fontWeight:500,flexShrink:0}}>{i+1}</span>
-                  <span style={{fontSize:14,fontWeight:600,color:DARK.text,flex:1,minWidth:0,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ex.name}</span>
+                  <span style={{fontSize:14,fontWeight:600,color:DARK.text,flex:1,minWidth:0,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingLeft:6}}>{ex.name}</span>
                   {ex.favorite==="Favorite"&&<span style={{fontSize:13,color:"#E8B84B",flexShrink:0}}>&#9733;</span>}
                   {ex.workOn==="Work On"&&<span style={{fontSize:11,color:"#e06666",flexShrink:0}}>&#128170;</span>}
                   {exerciseLastCompleted?.[ex.id]&&<span style={{fontSize:10,color:DARK.text3,flexShrink:0}}>{Math.floor((new Date()-new Date(exerciseLastCompleted[ex.id]+"T12:00:00"))/86400000)}d</span>}
@@ -343,14 +343,16 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                   {ex.video&&<a href={ex.video} target="_blank" rel="noreferrer" style={{fontSize:13,color:DARK.text2,textDecoration:"none",flexShrink:0}}>&#9654;</a>}
                   <button onClick={()=>isEditing?setEditId(null):startEdit(ex)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,background:"none",border:"0.5px solid "+DARK.border,color:DARK.text2,cursor:"pointer",flexShrink:0}}>{isEditing?"Cancel":"Edit"}</button>
                 </div>
+                {/* Middle line: reps for Mobility only */}
+                {!isEditing&&ex.type!=="Stretching"&&ex.reps&&ex.reps!=="N/A"&&<div style={{fontSize:12,color:DARK.text2,marginTop:3,paddingLeft:18}}>{ex.reps}</div>}
                 {/* Line 2: indented to align with name, tags left, swap right */}
-                {!isEditing&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:4,gap:4,paddingLeft:10}}>
+                {!isEditing&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:4,gap:4,paddingLeft:18}}>
                   <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",flex:1,minWidth:0}}>
                     {allTags.map(t=>{const tc=REGION_COLORS[t]||"#888";return <span key={t} style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:tc+"20",color:tc,border:`0.5px solid ${tc}44`}}>{t}</span>;})}
                     {ex.bodyPosition&&<span style={{fontSize:10,color:DARK.text3,marginLeft:2}}>{ex.bodyPosition}</span>}
                     {(exerciseCompletionCounts[ex.id]||0)===0&&<span style={{fontSize:10,color:"#ff6666",fontWeight:600}}>Never Completed</span>}
                   </div>
-                  {onSwapExercise&&<button onClick={()=>doSwapInWorkout(ex,i)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,background:"none",border:"0.5px solid "+DARK.border,color:DARK.text2,cursor:"pointer",flexShrink:0}}>Swap</button>}
+                  {onSwapExercise&&<button onClick={()=>doSwapInWorkout(ex,i)} style={{fontSize:10,padding:"2px 7px",borderRadius:5,background:"none",border:`0.5px solid ${S_COLOR}55`,color:S_COLOR,cursor:"pointer",flexShrink:0}}>Swap</button>}
                 </div>}
               </div>
               {isEditing && (
