@@ -272,13 +272,40 @@ function Tag({ label, color }) {
 }
 
 // ── WorkoutView ───────────────────────────────────────────────
-function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise, onSaveRoutine, exerciseCompletionCounts }) {
+function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise, onSaveRoutine, onSwapExercise, exerciseCompletionCounts, exerciseLastCompleted }) {
   const [editId, setEditId] = useState(null);
   const [editFields, setEditFields] = useState({});
+  const [swapHistory, setSwapHistory] = useState({}); // exId → Set of previously shown IDs
   const startEdit = ex => { setEditId(ex.id); setEditFields({name:ex.name||"",reps:ex.type==="Stretching"?(ex.reps||"N/A"):ex.reps||"",video:ex.video||"",muscleTags:[...(ex.muscleTags||[])],bodyPosition:ex.bodyPosition||"",type:ex.type||"Stretching",favorite:ex.favorite||"No",workOn:ex.workOn||"No"}); };
   const saveEdit = ex => {
     onUpdateExercise(ex.id, editFields);
     setEditId(null);
+  };
+
+  const doSwapInWorkout = (ex, idx) => {
+    const history = swapHistory[ex.id] || new Set();
+    const usedIds = new Set(exercises.map(e => e.id));
+    const excludeIds = new Set([...history, ...usedIds]);
+    const currentNeverDone = (exerciseCompletionCounts[ex.id]||0) === 0;
+    const score = e => { const r=exerciseCompletionCounts[e.id]||0; return (e.favorite==="Favorite"||e.workOn==="Work On")?r*0.5:r; };
+    const baseFilter = e => e.type===routine.type && !excludeIds.has(e.id);
+    const sameGroup = EXERCISES.filter(e => baseFilter(e) &&
+      (e.bodyRegion===ex.bodyRegion || (e.muscleTags||[]).some(t=>(ex.muscleTags||[]).includes(t))));
+    const broader = EXERCISES.filter(e => baseFilter(e) && !sameGroup.find(s=>s.id===e.id));
+    const pickFrom = pool => {
+      const never = pool.filter(e=>(exerciseCompletionCounts[e.id]||0)===0);
+      const done = pool.filter(e=>(exerciseCompletionCounts[e.id]||0)>0).sort((a,b)=>score(a)-score(b));
+      return currentNeverDone && never.length>0 ? never[0] : done.length>0 ? done[0] : never[0]||null;
+    };
+    const newEx = pickFrom(sameGroup) || pickFrom(broader);
+    if (!newEx) return;
+    const newHistory = new Set([...history, ex.id]);
+    setSwapHistory(prev => ({...prev, [ex.id]: newHistory}));
+    // Replace in place — no resorting
+    const newExercises = [...exercises];
+    newExercises[idx] = newEx;
+    // Call parent to update exercises list
+    onSwapExercise(idx, newEx);
   };
   return (
     <div style={{maxWidth:520,margin:"0 auto",padding:"0 16px 32px",background:DARK.bg,minHeight:"100vh"}}>
@@ -299,13 +326,20 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                 <div style={{flex:1,minWidth:0}}>
                   {/* Top row: name | controls */}
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                    <span style={{fontSize:15,fontWeight:600,color:DARK.text,lineHeight:1.3,flex:1,minWidth:0}}>{ex.name}</span>
-                    <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
-                      {ex.favorite==="Favorite"&&<span style={{fontSize:15,color:"#E8B84B"}}>&#9733;</span>}
-                      {ex.workOn==="Work On"&&<span style={{fontSize:12,color:"#e06666"}}>&#128170;</span>}
-                      {(exerciseCompletionCounts[ex.id]||0)>0&&<span style={{fontSize:11,color:DARK.text3}}>{exerciseCompletionCounts[ex.id]}&#215;</span>}
-                      {ex.video && <a href={ex.video} target="_blank" rel="noreferrer" style={{fontSize:15,color:DARK.text2,textDecoration:"none"}}>&#9654;</a>}
-                      <button onClick={() => isEditing ? setEditId(null) : startEdit(ex)} style={{fontSize:11,padding:"2px 8px",borderRadius:5,background:"none",border:"0.5px solid "+DARK.border,color:DARK.text2,cursor:"pointer"}}>{isEditing?"Cancel":"Edit"}</button>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                        <span style={{fontSize:15,fontWeight:600,color:DARK.text,lineHeight:1.3}}>{ex.name}</span>
+                        {ex.favorite==="Favorite"&&<span style={{fontSize:14,color:"#E8B84B"}}>&#9733;</span>}
+                        {ex.workOn==="Work On"&&<span style={{fontSize:12,color:"#e06666"}}>&#128170;</span>}
+                      </div>
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
+                      <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                        {(()=>{const ld=exerciseLastCompleted?.[ex.id];const ds=ld?Math.floor((new Date()-new Date(ld+"T12:00:00"))/86400000):null;const cnt=exerciseCompletionCounts[ex.id]||0;return<>{ds!==null&&<span style={{fontSize:10,color:DARK.text3}}>{ds}d</span>}{cnt>0&&<span style={{fontSize:10,color:DARK.text3}}>{cnt}&#215;</span>}</>})()}
+                        {ex.video&&<a href={ex.video} target="_blank" rel="noreferrer" style={{fontSize:14,color:DARK.text2,textDecoration:"none"}}>&#9654;</a>}
+                        <button onClick={()=>isEditing?setEditId(null):startEdit(ex)} style={{fontSize:11,padding:"2px 8px",borderRadius:5,background:"none",border:"0.5px solid "+DARK.border,color:DARK.text2,cursor:"pointer"}}>{isEditing?"Cancel":"Edit"}</button>
+                      </div>
+                      {!isEditing&&onSwapExercise&&<button onClick={()=>doSwapInWorkout(ex,i)} style={{fontSize:11,padding:"2px 6px",borderRadius:5,background:"none",border:`0.5px solid ${S_COLOR}66`,color:S_COLOR,cursor:"pointer",marginTop:2}}>Swap</button>}
                     </div>
                   </div>
                   {!isEditing && ex.reps && ex.type!=="Stretching" && <div style={{fontSize:12,color:DARK.text2,marginTop:2}}>{ex.reps}</div>}
@@ -313,6 +347,7 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:5,gap:4}}>
                     <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center",flex:1,minWidth:0}}>
                       {allTags.map(t => { const tc=REGION_COLORS[t]||"#888"; return <span key={t} style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:tc+"20",color:tc,border:`0.5px solid ${tc}44`}}>{t}</span>; })}
+                      {ex.bodyPosition&&!isEditing&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:10,background:DARK.bg3,color:DARK.text3,border:"0.5px solid "+DARK.border}}>{ex.bodyPosition}</span>}
                       {(exerciseCompletionCounts[ex.id]||0)===0&&!isEditing&&<span style={{fontSize:10,color:"#ff6666",fontWeight:600}}>Never Completed</span>}
                     </div>
                     {ex.bodyPosition&&!isEditing&&<span style={{fontSize:10,color:DARK.text3,flexShrink:0,marginLeft:6}}>{ex.bodyPosition}</span>}
@@ -359,7 +394,7 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                     <MuscleTagPicker value={editFields.muscleTags||[]} onChange={tags=>setEditFields(p=>({...p,muscleTags:tags}))}/>
                   </div>
 
-                  <button onClick={() => saveEdit(ex)} style={{gridColumn:"1/-1",padding:"7px",borderRadius:6,fontSize:13,fontWeight:600,background:S_COLOR,color:"white",border:"none",cursor:"pointer",marginTop:2}}>Save Changes</button>
+                  <button onClick={() => saveEdit(ex)} style={{gridColumn:"1/-1",padding:"7px",borderRadius:6,fontSize:13,fontWeight:600,background:"#E8B84B",color:"#1a1a00",border:"none",cursor:"pointer",marginTop:2}}>Save Changes</button>
                 </div>
               )}
             </div>
@@ -424,7 +459,7 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount, lastDate }) {
       <div style={{paddingTop:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px 12px",fontSize:13}}>
         {allTags.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Muscles: </span>{allTags.join(", ")}</div>}
         {e.bodyPosition && !editing && <div><span style={{color:DARK.text2}}>Position: </span>{e.bodyPosition}</div>}
-        {!editing && e.reps && e.type!=="Stretching" && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Reps: </span>{e.reps}</div>}
+        {!editing && e.reps && e.type!=="Stretching" && e.reps!=="N/A" && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Reps: </span>{e.reps}</div>}
         {(()=>{
           const ds=lastDate?Math.floor((new Date()-new Date(lastDate+"T12:00:00"))/86400000):null;
           return <>
@@ -483,7 +518,7 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount, lastDate }) {
 
 
           <div style={{display:"flex",gap:8,gridColumn:"1/-1"}}>
-            <button onClick={save} style={{flex:1,padding:"7px",borderRadius:6,fontSize:13,fontWeight:600,background:S_COLOR,color:"white",border:"none",cursor:"pointer"}}>Save</button>
+            <button onClick={save} style={{flex:1,padding:"7px",borderRadius:6,fontSize:13,fontWeight:600,background:"#E8B84B",color:"#1a1a00",border:"none",cursor:"pointer"}}>Save</button>
             <button onClick={() => setEditing(false)} style={{padding:"7px 12px",borderRadius:6,fontSize:13,background:"none",border:"0.5px solid "+DARK.border2,color:DARK.text2,cursor:"pointer"}}>Cancel</button>
           </div>
         </div>
@@ -588,6 +623,17 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
       const MAX_DAYS = 90;  // recency cap in days
 
       // Build scored candidates
+      // Compute weighted muscle contributions per exercise (tag order: 1, 0.5, 0.25, 0.125)
+      const getMuscleWeights = ex => {
+        const tags = ex.muscleTags || [ex.bodyRegion];
+        const weights = {};
+        tags.forEach((t, i) => { weights[t] = (weights[t]||0) + Math.pow(0.5, i); });
+        // Normalize so total weight = 1 regardless of tag count
+        const total = Object.values(weights).reduce((s,v)=>s+v, 0) || 1;
+        Object.keys(weights).forEach(k => { weights[k] /= total; });
+        return weights;
+      };
+
       const allCandidates = EXERCISES.filter(e => e.type === type).map(e => {
         const rarity = exerciseRoutineCount[e.id]||0;
         const rawDone = exerciseCompletionCounts[e.id]||0;
@@ -600,20 +646,17 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
           : MAX_DAYS;
         const normRecency = Math.min(daysSince, MAX_DAYS) / MAX_DAYS;
 
-        // Recency penalty based on last N routines of same type
         const recent = recentExercisesByType?.[type] || { last3: new Set(), last6: new Set() };
         const inLast3 = recent.last3.has(e.id);
         const inLast6 = recent.last6.has(e.id);
-        // last3 = near-blocked (very unlikely to appear), last6 = soft penalty
         const recencyPenalty = inLast3 ? 0.8 : inLast6 ? 0.35 : 0;
 
-        // score: lower = higher priority
-        // 55% completion count, 25% recency date, 20% recency penalty
         const score = normDone * 0.55 + (1 - normRecency) * 0.25 + recencyPenalty + (rarity > 5 ? 0.05 : 0);
 
         const neverDone = (exerciseCompletionCounts[e.id]||0) === 0;
         const flags = [e.favorite==="Favorite"?"FAV":"", e.workOn==="Work On"?"IMPROVE":""].filter(Boolean).join(",");
-        return { e, rarity, score, flags, neverDone };
+        const muscleWeights = getMuscleWeights(e);
+        return { e, rarity, score, flags, neverDone, muscleWeights };
       });
 
       // Separate never-done exercises
@@ -630,9 +673,10 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
       const topDone = doneBefore.slice(0, forcedNever ? 79 : 80);
       const topCandidates = forcedNever ? [...topDone, forcedNever] : topDone;
       const forcedId = forcedNever ? forcedNever.e.id : null;
-      const list = topCandidates.map(({e, rarity, score, flags, neverDone}) =>
-        `${e.id}|${e.name}|${e.bodyRegion}|${e.bodyPosition}|${score.toFixed(2)}${neverDone?"|NEW":""}${flags?"|"+flags:""}`
-      ).join("\n");
+      const list = topCandidates.map(({e, rarity, score, flags, neverDone, muscleWeights}) => {
+        const mw = Object.entries(muscleWeights).map(([k,v])=>`${k}:${v.toFixed(2)}`).join(",");
+        return `${e.id}|${e.name}|${e.bodyRegion}|${e.bodyPosition}|${score.toFixed(2)}|[${mw}]${neverDone?"|NEW":""}${flags?"|"+flags:""}`;
+      }).join("\n");
       const forcedNote = forcedId ? `\nIMPORTANT: You MUST include exactly this one NEW exercise: ${forcedId}. Include no other NEW-tagged exercises.` : "";
       const resp = await fetch("/api/generate", {
         method:"POST",
@@ -666,9 +710,9 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
         const ai=POSITION_ORDER.indexOf(a.bodyPosition); const bi=POSITION_ORDER.indexOf(b.bodyPosition);
         return (ai===-1?99:ai)-(bi===-1?99:bi);
       });
-      setExercises(sorted.map(ex=>({ex})));
-      setRoutineName(`${type==="Stretching"?"S":"M"} (generated)`);
-      setStep("edit");
+      const label = `${type==="Stretching"?"S":"M"} (generated)`;
+      const fakeRoutine = {id:`gen-${Date.now()}`,name:label,type,exerciseIds:sorted.map(e=>e.id)};
+      onStart(fakeRoutine, sorted);
     } catch(err) {
       console.error("Generate error:", err);
       setError(err.message||"Generation failed. Try again.");
@@ -870,6 +914,9 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
   const [showAddExercise, setShowAddExercise] = useState(false);
+  const [showExercisesToAdd, setShowExercisesToAdd] = useState(false);
+  const [exercisesToAddNotes, setExercisesToAddNotes] = useState("• Single Knee to Chest Stretch
+");
   const [showAddCompletion, setShowAddCompletion] = useState(false);
   const [editCompletionId, setEditCompletionId] = useState(null);
   const [expandedHistory, setExpandedHistory] = useState(null);
@@ -1229,6 +1276,13 @@ export default function App() {
     logCompletion(activeWorkout.routine, activeWorkout.exercises.map(e=>e.id)); setActiveWorkout(null);
   }, [activeWorkout, logCompletion]);
 
+  const swapWorkoutExercise = useCallback((idx, newEx) => {
+    setActiveWorkout(aw => aw ? {
+      ...aw,
+      exercises: aw.exercises.map((e, i) => i === idx ? newEx : e)
+    } : aw);
+  }, []);
+
   const saveGeneratedRoutine = useCallback(() => {
     if (!activeWorkout) return;
     const rt = activeWorkout.routine;
@@ -1290,7 +1344,7 @@ export default function App() {
     <>
     <style>{DARK_STYLE}</style>
     <div style={{padding:"20px 0"}}>
-      <WorkoutView routine={activeWorkout.routine} exercises={activeWorkout.exercises} onComplete={completeWorkout} onExit={()=>setActiveWorkout(null)} onUpdateExercise={updateExercise} onSaveRoutine={activeWorkout.routine.id?.startsWith("gen-")?saveGeneratedRoutine:null} exerciseCompletionCounts={exerciseCompletionCounts}/>
+      <WorkoutView routine={activeWorkout.routine} exercises={activeWorkout.exercises} onComplete={completeWorkout} onExit={()=>setActiveWorkout(null)} onUpdateExercise={updateExercise} onSaveRoutine={activeWorkout.routine.id?.startsWith("gen-")?saveGeneratedRoutine:null} onSwapExercise={swapWorkoutExercise} exerciseCompletionCounts={exerciseCompletionCounts} exerciseLastCompleted={exerciseLastCompleted}/>
     </div>
     </>
   );
@@ -1306,7 +1360,7 @@ export default function App() {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h1 style={{fontSize:18,fontWeight:600,margin:0,color:'#ffffff'}}>{"Mark's Stretching & Mobility"}</h1>
         <div style={{fontSize:11,color:DARK.text2,display:"flex",gap:6}}>
-          <span>{allExercises.length} exercises</span><span>&#183;</span><span>{allRoutines.length} routines</span>
+          <span>{allExercises.length} exercises</span><span>&#183;</span><span>{completions.length} sessions</span>
         </div>
       </div>
 
@@ -1373,8 +1427,12 @@ export default function App() {
       {tab==="exercises" && (
         <div>
           <div style={{display:"flex",gap:8,marginBottom:10}}>
-            <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder={`Search ${allExercises.length} exercises...`} style={{flex:1,boxSizing:"border-box"}}/>
+            <div style={{flex:1,position:"relative",display:"flex",alignItems:"center"}}>
+            <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder={`Search ${allExercises.length} exercises...`} style={{width:"100%",boxSizing:"border-box",paddingRight:searchQ?"28px":"8px"}}/>
+            {searchQ&&<button onClick={()=>setSearchQ("")} style={{position:"absolute",right:6,background:"none",border:"none",cursor:"pointer",color:DARK.text3,fontSize:16,lineHeight:1,padding:0}}>&#10005;</button>}
+          </div>
             <button onClick={()=>setShowAddExercise(v=>!v)} style={{padding:"6px 12px",borderRadius:6,fontSize:12,fontWeight:600,background:S_COLOR,color:"white",border:"none",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>+ Add</button>
+            <button onClick={()=>setShowExercisesToAdd(v=>!v)} style={{padding:"6px 10px",borderRadius:6,fontSize:12,fontWeight:600,background:DARK.bg3,color:DARK.text2,border:"0.5px solid "+DARK.border,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>&#128203; To Add</button>
           </div>
           <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
             {[["All","#888"],["Stretching",S_COLOR],["Mobility",M_COLOR]].map(([t,color])=>{
@@ -1400,6 +1458,16 @@ export default function App() {
             </select>
           </div>
 
+          {showExercisesToAdd && (
+            <div style={{background:DARK.bg2,borderRadius:10,border:"0.5px solid "+DARK.border,padding:16,marginBottom:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <span style={{fontWeight:600,fontSize:14,color:DARK.text}}>Exercises to Add</span>
+                <button onClick={()=>setShowExercisesToAdd(false)} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:18}}>&#10005;</button>
+              </div>
+              <textarea value={exercisesToAddNotes} onChange={e=>setExercisesToAddNotes(e.target.value)} rows={8} style={{width:"100%",boxSizing:"border-box",resize:"vertical",fontSize:13,lineHeight:1.6,background:DARK.bg3,color:DARK.text,border:"1px solid #555",borderRadius:6,padding:"8px 10px",fontFamily:"inherit"}} placeholder="Add exercises you want to add..."/>
+              <div style={{fontSize:11,color:DARK.text3,marginTop:6}}>Notes auto-save as you type</div>
+            </div>
+          )}
           {showAddExercise && <AddExerciseForm onSave={ex=>{const updated=[...customExercises,ex];setCustomExercises(updated);save(completions,customRoutines,updated);sbSaveCustomExercise(ex);setShowAddExercise(false);showToast(`Added ${ex.name}`);}} onClose={()=>setShowAddExercise(false)}/>}
 
           <div style={{fontSize:12,color:DARK.text3,marginBottom:10}}>{filteredExercises.length} of {allExercises.length} exercises</div>
@@ -1439,7 +1507,7 @@ export default function App() {
                     </div>
                     <div style={{marginTop:5,display:"flex",gap:4,flexWrap:"wrap"}}>
                       {tags.map(t=><Tag key={t} label={t} color={REGION_COLORS[t]||c}/>)}
-                      {e.reps&&<span style={{fontSize:11,color:DARK.text3,alignSelf:"center"}}>{e.reps}</span>}
+                      {e.reps&&e.type!=="Stretching"&&e.reps!=="N/A"&&<span style={{fontSize:11,color:DARK.text3,alignSelf:"center"}}>{e.reps}</span>}
                     </div>
                   </div>
                   {sel && <ExerciseInlineEdit e={e} liveCount={exerciseCompletionCounts[e.id]||0} lastDate={exerciseLastCompleted[e.id]||null}
@@ -1550,8 +1618,7 @@ export default function App() {
                         {(()=>{const t=r?.type||c.routineType;const tc=t==="Stretching"?S_COLOR:M_COLOR;return t?<span style={{fontSize:11,padding:"1px 7px",borderRadius:10,background:tc+"22",color:tc,border:`0.5px solid ${tc}44`,whiteSpace:"nowrap"}}>{t}</span>:null;})()}
                       </td>
                       <td style={{padding:"8px 4px",textAlign:"right",whiteSpace:"nowrap"}}>
-                        <button onClick={()=>{if(editCompletionId===c.id){setEditCompletionId(null);}else{setEditCompletionId(c.id);setEditCompletionFields({date:c.date,routineId:c.routineId,routineName:c.routineName});}}} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:12,padding:"2px 6px",marginRight:2}}>Edit</button>
-                        <button onClick={()=>setConfirmDelete({label:`${c.routineName} on ${fmtDate(c.date)}`,onConfirm:()=>deleteCompletion(c.id)})} style={{background:"none",border:"none",cursor:"pointer",color:"#C00000",fontSize:18,fontWeight:700,lineHeight:1,padding:"2px 6px"}}>&#215;</button>
+                        <button onClick={()=>{if(editCompletionId===c.id){setEditCompletionId(null);}else{setEditCompletionId(c.id);setEditCompletionFields({date:c.date,routineId:c.routineId,routineName:c.routineName});}}} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:12,padding:"2px 6px"}}>Edit</button>
                       </td>
                     </tr>
                     {editCompletionId===c.id&&(
