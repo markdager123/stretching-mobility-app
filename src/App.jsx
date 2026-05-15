@@ -335,7 +335,7 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                     </div>
                     <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
                       <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                        {(()=>{const ld=exerciseLastCompleted?.[ex.id];const ds=ld?Math.floor((new Date()-new Date(ld+"T12:00:00"))/86400000):null;const cnt=exerciseCompletionCounts[ex.id]||0;return <>{ds!==null&&<span style={{fontSize:10,color:DARK.text3}}>{ds}d</span>}{cnt>0&&<span style={{fontSize:10,color:DARK.text3}}>{cnt}&#215;</span>}</>})()}
+                        {exerciseLastCompleted?.[ex.id]&&<span style={{fontSize:10,color:DARK.text3}}>{Math.floor((new Date()-new Date(exerciseLastCompleted[ex.id]+"T12:00:00"))/86400000)}d</span>}{(exerciseCompletionCounts[ex.id]||0)>0&&<span style={{fontSize:10,color:DARK.text3}}>{exerciseCompletionCounts[ex.id]}&#215;</span>}
                         {ex.video&&<a href={ex.video} target="_blank" rel="noreferrer" style={{fontSize:14,color:DARK.text2,textDecoration:"none"}}>&#9654;</a>}
                         <button onClick={()=>isEditing?setEditId(null):startEdit(ex)} style={{fontSize:11,padding:"2px 8px",borderRadius:5,background:"none",border:"0.5px solid "+DARK.border,color:DARK.text2,cursor:"pointer"}}>{isEditing?"Cancel":"Edit"}</button>
                       </div>
@@ -460,13 +460,8 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount, lastDate }) {
         {allTags.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Muscles: </span>{allTags.join(", ")}</div>}
         {e.bodyPosition && !editing && <div><span style={{color:DARK.text2}}>Position: </span>{e.bodyPosition}</div>}
         {!editing && e.reps && e.type!=="Stretching" && e.reps!=="N/A" && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Reps: </span>{e.reps}</div>}
-        {(()=>{
-          const ds=lastDate?Math.floor((new Date()-new Date(lastDate+"T12:00:00"))/86400000):null;
-          return <>
-            {ds!==null&&<div><span style={{color:DARK.text2}}>Days Since: </span>{ds}</div>}
-            {(liveCount||0)>0&&<div><span style={{color:DARK.text2}}>Completions: </span>{liveCount}</div>}
-          </>;
-        })()}
+        {lastDate&&<div><span style={{color:DARK.text2}}>Days Since: </span>{Math.floor((new Date()-new Date(lastDate+"T12:00:00"))/86400000)}</div>}
+        {(liveCount||0)>0&&<div><span style={{color:DARK.text2}}>Completions: </span>{liveCount}</div>}
         {e.routines && e.routines.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Routines: </span>{e.routines.join(", ")}</div>}
       </div>
       {e.video && !editing && <a href={e.video} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:12,color:S_COLOR,textDecoration:"none",marginTop:8}}>&#9654; Watch video</a>}
@@ -815,15 +810,8 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
                   </div>
                 </div>
                 <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                  {(()=>{
-                    const lastDate = exerciseLastCompleted[ex.id];
-                    const daysSince = lastDate ? Math.floor((new Date()-new Date(lastDate+"T12:00:00"))/86400000) : null;
-                    const count = exerciseCompletionCounts[ex.id]||0;
-                    return <>
-                      {daysSince!==null&&<span style={{fontSize:10,color:DARK.text3,marginRight:1}}>{daysSince}d</span>}
-                      {count>0&&<span style={{fontSize:10,color:DARK.text3,marginRight:2}}>{count}&#215;</span>}
-                    </>;
-                  })()}
+                  {exerciseLastCompleted[ex.id]&&<span style={{fontSize:10,color:DARK.text3,marginRight:1}}>{Math.floor((new Date()-new Date(exerciseLastCompleted[ex.id]+"T12:00:00"))/86400000)}d</span>}
+                  {(exerciseCompletionCounts[ex.id]||0)>0&&<span style={{fontSize:10,color:DARK.text3,marginRight:2}}>{exerciseCompletionCounts[ex.id]}&#215;</span>}
                   <button onClick={()=>doSwap(i)} style={{padding:"3px 8px",borderRadius:5,fontSize:11,background:"none",color:S_COLOR,border:`0.5px solid ${S_COLOR}66`,cursor:"pointer"}}>Swap</button>
                 </div>
               </div>
@@ -1488,21 +1476,9 @@ export default function App() {
                       <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
                         {e.favorite==="Favorite"&&<span style={{fontSize:15,color:"#E8B84B",lineHeight:1}}>&#9733;</span>}
                         {e.workOn==="Work On"&&<span style={{fontSize:12,color:"#e06666",lineHeight:1}}>&#128170;</span>}
-                        {(()=>{
-                          const ld=exerciseLastCompleted[e.id];
-                          const ds=ld?Math.floor((new Date()-new Date(ld+"T12:00:00"))/86400000):null;
-                          const cnt=exerciseCompletionCounts[e.id]||0;
-                          const never=cnt===0;
-                          return <>
-                            {never
-                              ? <span style={{fontSize:11,color:"#ff6666",fontWeight:600}}>Never Completed</span>
-                              : <>
-                                  {ds!==null&&<span style={{fontSize:11,color:DARK.text3}}>{ds}d</span>}
-                                  <span style={{fontSize:11,color:DARK.text3,fontWeight:500}}>{cnt}&#215;</span>
-                                </>
-                            }
-                          </>;
-                        })()}
+                        {(exerciseCompletionCounts[e.id]||0)===0
+                          ? <span style={{fontSize:11,color:"#ff6666",fontWeight:600}}>Never Completed</span>
+                          : <>{exerciseLastCompleted[e.id]&&<span style={{fontSize:11,color:DARK.text3}}>{Math.floor((new Date()-new Date(exerciseLastCompleted[e.id]+"T12:00:00"))/86400000)}d</span>}<span style={{fontSize:11,color:DARK.text3,fontWeight:500}}>{exerciseCompletionCounts[e.id]}&#215;</span></>}
                       </div>
                     </div>
                     <div style={{marginTop:5,display:"flex",gap:4,flexWrap:"wrap"}}>
@@ -1615,7 +1591,7 @@ export default function App() {
                         }
                       </td>
                       <td style={{padding:"8px 8px"}}>
-                        {(()=>{const t=r?.type||c.routineType;const tc=t==="Stretching"?S_COLOR:M_COLOR;return t?<span style={{fontSize:11,padding:"1px 7px",borderRadius:10,background:tc+"22",color:tc,border:`0.5px solid ${tc}44`,whiteSpace:"nowrap"}}>{t}</span>:null;})()}
+                        {(r?.type||c.routineType)?<span style={{fontSize:11,padding:"1px 7px",borderRadius:10,background:(r?.type||c.routineType)==="Stretching"?S_COLOR+"22":M_COLOR+"22",color:(r?.type||c.routineType)==="Stretching"?S_COLOR:M_COLOR,border:`0.5px solid ${(r?.type||c.routineType)==="Stretching"?S_COLOR:M_COLOR}44`,whiteSpace:"nowrap"}}>{r?.type||c.routineType}</span>:null}
                       </td>
                       <td style={{padding:"8px 4px",textAlign:"right",whiteSpace:"nowrap"}}>
                         <button onClick={()=>{if(editCompletionId===c.id){setEditCompletionId(null);}else{setEditCompletionId(c.id);setEditCompletionFields({date:c.date,routineId:c.routineId,routineName:c.routineName});}}} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:12,padding:"2px 6px"}}>Edit</button>
