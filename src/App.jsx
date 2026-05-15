@@ -334,8 +334,8 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                            <div style={{padding:"11px 13px"}}>
                 {/* Line 1: number · name · icons · stats · video · edit — all on one row */}
                 <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"nowrap",overflow:"hidden"}}>
-                  <span style={{fontSize:12,color:DARK.text3,fontWeight:500,flexShrink:0}}>{i+1}</span>
-                  <span style={{fontSize:14,fontWeight:600,color:DARK.text,flex:1,minWidth:0,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingLeft:6}}>{ex.name}</span>
+                  <span style={{fontSize:12,color:DARK.text3,fontWeight:500,flexShrink:0,minWidth:10,textAlign:"right"}}>{i+1}</span>
+                  <span style={{fontSize:14,fontWeight:600,color:DARK.text,flex:1,minWidth:0,lineHeight:1.3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingLeft:3}}>{ex.name}</span>
                   {ex.favorite==="Favorite"&&<span style={{fontSize:13,color:"#E8B84B",flexShrink:0}}>&#9733;</span>}
                   {ex.workOn==="Work On"&&<span style={{fontSize:11,color:"#e06666",flexShrink:0}}>&#128170;</span>}
                   {exerciseLastCompleted?.[ex.id]&&<span style={{fontSize:10,color:DARK.text3,flexShrink:0}}>{Math.floor((new Date()-new Date(exerciseLastCompleted[ex.id]+"T12:00:00"))/86400000)}d</span>}
