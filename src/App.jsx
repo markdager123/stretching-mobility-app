@@ -70,8 +70,8 @@ const ROUTINES_BASE = [{"id":"r-M1","name":"M1","type":"Mobility","exerciseIds":
 
 const MUSCLE_TAG_ZONES = [
   { zone: "Upper Body", tags: ["Neck","Shoulders","Chest","Upper/Mid Back","Lats","Biceps","Triceps","Forearms","Arms","Wrist"] },
-  { zone: "Core",       tags: ["Core","Abs","Obliques","Lower Back","Spine","Hips","Hip Flexors","Glutes"] },
-  { zone: "Legs",       tags: ["Adductors","Abductors","Groin","Quads","Hamstrings","Knees","Calves","Tibialis","Achilles","Ankles","Feet"] },
+  { zone: "Core",       tags: ["Core","Abs","Obliques","Lower Back","Spine","Hips","Hip Flexors","Glutes","Abductors","Groin"] },
+  { zone: "Legs",       tags: ["Adductors","Quads","Hamstrings","Knees","Calves","Tibialis","Achilles","Ankles","Feet"] },
 ];
 const ALL_MUSCLE_TAGS = MUSCLE_TAG_ZONES.flatMap(z => z.tags);
 
@@ -152,8 +152,8 @@ const REGION_COLORS = {
   // Hips & glutes = blue (same zone)
   "Hips":"#4FA8D4","Hip Flexors":"#4FA8D4","Glutes":"#4FA8D4","Abductors":"#4FA8D4",
   // Legs = green
-  "Adductors":"#52A882","Groin":"#52A882",
-  "Quads":"#52A882","Hamstrings":"#52A882","Knees":"#52A882",
+  "Groin":"#4FA8D4",
+  "Adductors":"#52A882","Quads":"#52A882","Hamstrings":"#52A882","Knees":"#52A882",
   "Calves":"#52A882","Tibialis":"#52A882","Achilles":"#52A882","Ankles":"#52A882","Feet":"#52A882"
 };
 
@@ -898,11 +898,15 @@ export default function App() {
   const [activeWorkout, setActiveWorkout] = useState(null);
   const [selectedEx, setSelectedEx] = useState(null);
   const [showNewRoutine, setShowNewRoutine] = useState(false);
+  const [expandedRoutineSection, setExpandedRoutineSection] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showExercisesToAdd, setShowExercisesToAdd] = useState(false);
-  const [exercisesToAddNotes, setExercisesToAddNotes] = useState("• Single Knee to Chest Stretch\n");
+  const [exercisesToAddNotes, setExercisesToAddNotes] = useState(() => {
+    try { return localStorage.getItem("limber_exercises_to_add") || "• Single Knee to Chest Stretch\n"; }
+    catch(e) { return "• Single Knee to Chest Stretch\n"; }
+  });
   const [showAddCompletion, setShowAddCompletion] = useState(false);
   const [editCompletionId, setEditCompletionId] = useState(null);
   const [expandedHistory, setExpandedHistory] = useState(null);
@@ -1200,11 +1204,16 @@ export default function App() {
   }, [completions]);
 
   const weeklyData = useMemo(() => {
-    const weeks=[]; const today=new Date();
-    const dayOfWeek=today.getDay();
-    const lastSunday=new Date(today); lastSunday.setDate(today.getDate()-dayOfWeek);
+    const weeks=[];
+    // Use PST today
+    const todayPST = new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
+    const today = new Date(todayPST+"T00:00:00");
+    // Monday start: getDay() returns 0=Sun,1=Mon..6=Sat. Days since last Monday:
+    const dayOfWeek = today.getDay(); // 0=Sun
+    const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const lastMonday = new Date(today); lastMonday.setDate(today.getDate()-daysSinceMonday);
     for(let w=23;w>=0;w--){
-      const weekStart=new Date(lastSunday); weekStart.setDate(lastSunday.getDate()-w*7);
+      const weekStart=new Date(lastMonday); weekStart.setDate(lastMonday.getDate()-w*7);
       const weekEnd=new Date(weekStart); weekEnd.setDate(weekStart.getDate()+6);
       const ws=weekStart.toISOString().split("T")[0]; const we=weekEnd.toISOString().split("T")[0];
       const inWeek=completions.filter(c=>c.date>=ws&&c.date<=we);
@@ -1344,7 +1353,7 @@ export default function App() {
       {confirmDelete && <ConfirmDialog message={`Delete ${confirmDelete.label}?`} onConfirm={()=>{confirmDelete.onConfirm();setConfirmDelete(null);}} onCancel={()=>setConfirmDelete(null)}/>}
 
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h1 style={{fontSize:18,fontWeight:600,margin:0,color:'#ffffff'}}>{"Mark's Stretching & Mobility"}</h1>
+        <h1 style={{fontSize:18,fontWeight:600,margin:0,color:'#ffffff'}}>Limber, Mark's Stretching & Mobility App</h1>
         <div style={{fontSize:11,color:DARK.text2,display:"flex",gap:6}}>
           <span>{allExercises.length} exercises</span><span>&#183;</span><span>{completions.length} sessions</span>
         </div>
@@ -1372,18 +1381,32 @@ export default function App() {
       {/* ── ROUTINES TAB ── */}
       {tab==="routines" && (
         <div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:8}}>
-            <div style={{display:"flex",gap:0,borderRadius:8,overflow:"hidden",border:"1px solid "+DARK.border}}>
-              {[["Stretching",S_COLOR],["Mobility",M_COLOR]].map(([t,color])=>(
-                <button key={t} onClick={()=>setRoutineType(t)} style={{padding:"7px 18px",fontSize:13,fontWeight:routineType===t?700:400,background:routineType===t?color:DARK.bg,border:"none",color:routineType===t?"white":DARK.text2,cursor:"pointer",transition:"all 0.15s"}}>{t}</button>
-              ))}
-            </div>
-            <button onClick={()=>setShowNewRoutine(true)} disabled={isGenerating} style={{padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600,background:routineType==="Stretching"?S_COLOR:M_COLOR,color:"white",border:"none",cursor:isGenerating?"default":"pointer",flexShrink:0,opacity:isGenerating?0.7:1}}>{isGenerating?"Generating...":"+ Generate"}</button>
+          {/* Big generate buttons */}
+          <div style={{display:"flex",gap:12,marginBottom:24}}>
+            {[["Stretching",S_COLOR,"🧘"],["Mobility",M_COLOR,"💪"]].map(([t,color,icon])=>(
+              <button key={t} onClick={()=>{setRoutineType(t);setShowNewRoutine(true);}} disabled={isGenerating}
+                style={{flex:1,padding:"0",borderRadius:16,border:"none",cursor:isGenerating?"default":"pointer",opacity:isGenerating?0.7:1,overflow:"hidden",boxShadow:"0 4px 14px rgba(0,0,0,0.3)"}}>
+                <div style={{background:`linear-gradient(135deg, ${color}dd, ${color})`,padding:"20px 12px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:26,lineHeight:1,color:"rgba(255,255,255,0.8)",filter:"grayscale(1) brightness(1.8)"}}>{icon}</span>
+                  <div style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.8)",letterSpacing:"0.08em",textTransform:"uppercase"}}>{t}</div>
+                  <div style={{fontSize:14,fontWeight:700,color:"white",lineHeight:1.2}}>{isGenerating&&routineType===t?"Generating...":"Generate Routine"}</div>
+                </div>
+              </button>
+            ))}
           </div>
 
           {showNewRoutine && <NewRoutineBuilder filterType={routineType} exerciseRoutineCount={exerciseRoutineCount} exerciseCompletionCounts={exerciseCompletionCounts} exerciseLastCompleted={exerciseLastCompleted} recentExercisesByType={recentExercisesByType} onStart={(routine,exs)=>{setShowNewRoutine(false);setActiveWorkout({routine,exercises:exs});}} onClose={()=>setShowNewRoutine(false)}/>}
 
-          {filteredRoutines.map(r => {
+          {/* Collapsible saved routines by type */}
+          {[["Stretching",S_COLOR],["Mobility",M_COLOR]].map(([t,color])=>{
+            const typeRoutines = allRoutines.filter(r=>r.type===t);
+            return (
+              <div key={t} style={{marginBottom:10}}>
+                <button onClick={()=>setExpandedRoutineSection(expandedRoutineSection===t?null:t)} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",background:DARK.bg2,border:"0.5px solid "+DARK.border,borderRadius:8,padding:"10px 14px",cursor:"pointer",marginBottom:expandedRoutineSection===t?6:0}}>
+                  <span style={{fontSize:13,fontWeight:600,color}}>{t} Routines</span>
+                  <span style={{fontSize:12,color:DARK.text3}}>{typeRoutines.length} saved {expandedRoutineSection===t?"▲":"▼"}</span>
+                </button>
+                {expandedRoutineSection===t && typeRoutines.sort((a,b)=>{const la=lastCompleted(a.id),lb=lastCompleted(b.id);if(!la&&!lb)return 0;if(!la)return 1;if(!lb)return -1;return lb.localeCompare(la);}).map(r => {
             const last=lastCompleted(r.id); const count=completionCount(r.id);
             const typeColor=r.type==="Stretching"?S_COLOR:M_COLOR;
             return (
@@ -1403,6 +1426,9 @@ export default function App() {
                     : <span>Never completed</span>}
                   {count>0&&<span>{count} Completions</span>}
                 </div>
+              </div>
+            );
+          })}
               </div>
             );
           })}
@@ -1450,7 +1476,7 @@ export default function App() {
                 <span style={{fontWeight:600,fontSize:14,color:DARK.text}}>Exercises to Add</span>
                 <button onClick={()=>setShowExercisesToAdd(false)} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:18}}>&#10005;</button>
               </div>
-              <textarea value={exercisesToAddNotes} onChange={e=>setExercisesToAddNotes(e.target.value)} rows={8} style={{width:"100%",boxSizing:"border-box",resize:"vertical",fontSize:13,lineHeight:1.6,background:DARK.bg3,color:DARK.text,border:"1px solid #555",borderRadius:6,padding:"8px 10px",fontFamily:"inherit"}} placeholder="Add exercises you want to add..."/>
+              <textarea value={exercisesToAddNotes} onChange={e=>{setExercisesToAddNotes(e.target.value);try{localStorage.setItem("limber_exercises_to_add",e.target.value);}catch(ex){}}} rows={8} style={{width:"100%",boxSizing:"border-box",resize:"vertical",fontSize:13,lineHeight:1.6,background:DARK.bg3,color:DARK.text,border:"1px solid #555",borderRadius:6,padding:"8px 10px",fontFamily:"inherit"}} placeholder="Add exercises you want to add..."/>
               <div style={{fontSize:11,color:DARK.text3,marginTop:6}}>Notes auto-save as you type</div>
             </div>
           )}
