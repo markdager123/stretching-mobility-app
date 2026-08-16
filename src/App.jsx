@@ -139,6 +139,29 @@ function syncMuscleTags(ex) {
   return { ...ex, muscleTags: deriveMuscleTags(ex.primaryMuscle, ex.bodyRegion) };
 }
 
+// Weighted per-tag contribution for an exercise: 1st tag=1, 2nd=0.5, 3rd=0.25, 4th=0.125...
+// normalized so the weights sum to 1 regardless of tag count. Used both to describe an
+// exercise's muscle emphasis to the AI and to score how "muscle-saturated" it is (see
+// muscleFrequency4wk / generate() below).
+function getMuscleTagWeights(ex) {
+  const tags = (ex.muscleTags && ex.muscleTags.length) ? ex.muscleTags : [ex.bodyRegion];
+  const weights = {};
+  tags.forEach((t, i) => { if (t) weights[t] = (weights[t]||0) + Math.pow(0.5, i); });
+  const total = Object.values(weights).reduce((s,v)=>s+v, 0) || 1;
+  Object.keys(weights).forEach(k => { weights[k] /= total; });
+  return weights;
+}
+
+// Favorite and Work On each independently apply a 0.75x multiplier to an exercise's score
+// (lower score = more likely to be picked) — they stack, so an exercise that's both gets
+// 0.75 × 0.75 = 0.5625, roughly a 44% score cut vs. one flag's 25% cut.
+function favWorkOnBoost(e) {
+  let boost = 1.0;
+  if (e.favorite === "Favorite") boost *= 0.75;
+  if (e.workOn === "Work On") boost *= 0.75;
+  return boost;
+}
+
 const S_COLOR = "#2196C4";   // Stretching — medium blue (dark mode friendly)
 const M_COLOR = "#E97132";   // Mobility — orange
 
@@ -157,7 +180,122 @@ const REGION_COLORS = {
   "Calves":"#52A882","Tibialis":"#52A882","Achilles":"#52A882","Ankles":"#52A882","Feet":"#52A882"
 };
 
+// Groups the granular muscle/joint tags into 8 broader categories for the Muscle/joint load
+// chart (fewer lines to read). Any tag not listed here maps to itself.
+const MUSCLE_GROUP_MAP = {
+  "Neck":"Upper Back/Neck", "Upper/Mid Back":"Upper Back/Neck", "Back":"Upper Back/Neck", "Lats":"Upper Back/Neck", "Spine":"Upper Back/Neck",
+  "Shoulders":"Shoulders/Chest", "Chest":"Shoulders/Chest",
+  "Biceps":"Arms/Wrist", "Triceps":"Arms/Wrist", "Arms":"Arms/Wrist", "Forearms":"Arms/Wrist", "Wrist":"Arms/Wrist",
+  "Core":"Core/Lower Back", "Abs":"Core/Lower Back", "Obliques":"Core/Lower Back", "Lower Back":"Core/Lower Back",
+  "Hip Flexors":"Hips", "Groin":"Hips",
+  "Glutes":"Hamstrings/Glutes", "Abductors":"Hamstrings/Glutes", "Hamstrings":"Hamstrings/Glutes",
+  "Adductors":"Knees/Quads", "Quads":"Knees/Quads", "Knees":"Knees/Quads",
+  "Calves":"Ankles/Feet", "Tibialis":"Ankles/Feet", "Achilles":"Ankles/Feet", "Ankles":"Ankles/Feet", "Feet":"Ankles/Feet",
+};
+function muscleGroupOf(tag) { return MUSCLE_GROUP_MAP[tag] || tag; }
+
+// Which of the app's 3 existing zone colors (see REGION_COLORS) each grouped category belongs
+// to, used to lay the chart legend out in 3 rows.
+const MUSCLE_GROUP_ZONE = {
+  "Shoulders/Chest":"upper", "Upper Back/Neck":"upper", "Arms/Wrist":"upper",
+  "Core/Lower Back":"core", "Hips":"core",
+  "Hamstrings/Glutes":"lower", "Knees/Quads":"lower", "Ankles/Feet":"lower",
+};
+const ZONE_LABEL = { upper: "Upper Body", core: "Core", lower: "Lower Body" };
+const ZONE_ORDER = ["upper","core","lower"];
+const ZONE_COLOR = { upper: REGION_COLORS["Shoulders"], core: REGION_COLORS["Core"], lower: REGION_COLORS["Quads"] };
+
+// Fixed (not weight-sorted) per-zone category order, so each category always gets the same
+// shade regardless of how the data changes — e.g. Hips is always the lighter blue, never
+// swapping shades with Core/Lower Back depending on which has more load this week.
+const ZONE_CATEGORIES = {
+  upper: ["Upper Back/Neck","Shoulders/Chest","Arms/Wrist"],
+  core: ["Core/Lower Back","Hips"],
+  lower: ["Ankles/Feet","Knees/Quads","Hamstrings/Glutes"],
+};
+
+// Blends a hex color toward white (amount > 0) or black (amount < 0).
+function shade(hex, amount) {
+  const num = parseInt(hex.slice(1),16);
+  let r=(num>>16)&255, g=(num>>8)&255, b=num&255;
+  if (amount >= 0) { r+=(255-r)*amount; g+=(255-g)*amount; b+=(255-b)*amount; }
+  else { r*=(1+amount); g*=(1+amount); b*=(1+amount); }
+  const clamp = v => Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,"0");
+  return `#${clamp(r)}${clamp(g)}${clamp(b)}`;
+}
+
+// Each category gets a different shade of its zone's color — dark for the first in the zone's
+// fixed order, light for the last — so a stacked chart can tell same-zone categories apart.
+function muscleGroupColor(group) {
+  const zone = MUSCLE_GROUP_ZONE[group];
+  const list = ZONE_CATEGORIES[zone] || [group];
+  const idx = Math.max(0, list.indexOf(group));
+  const n = list.length;
+  const shadeAmount = n<=1 ? 0 : -0.35 + 0.7*(idx/(n-1)); // -0.35 (dark) → +0.35 (light)
+  return shade(ZONE_COLOR[zone]||"#888888", shadeAmount);
+}
+
 const POSITION_ORDER = ["Standing","Kneeling","Sitting","On Back","On Stomach"];
+
+// Monday-start week boundaries, oldest → newest, ending with the current week. Shared by the
+// Weekly sessions and Muscle/joint load charts so both scroll over the exact same weeks.
+function getWeekBoundaries(count) {
+  const todayPST = new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
+  const today = new Date(todayPST+"T00:00:00");
+  const dayOfWeek = today.getDay(); // 0=Sun
+  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const lastMonday = new Date(today); lastMonday.setDate(today.getDate()-daysSinceMonday);
+  const weeks = [];
+  for (let w=count-1; w>=0; w--) {
+    const weekStart = new Date(lastMonday); weekStart.setDate(lastMonday.getDate()-w*7);
+    const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate()+6);
+    weeks.push({
+      ws: weekStart.toISOString().split("T")[0],
+      we: weekEnd.toISOString().split("T")[0],
+      label: weekStart.toLocaleDateString("en-US",{month:"short",day:"numeric"}),
+    });
+  }
+  return weeks;
+}
+
+// Monday of the week containing the given yyyy-mm-dd date string.
+function mondayOf(dateStr) {
+  const d = new Date(dateStr+"T00:00:00");
+  const dow = d.getDay();
+  const daysSinceMonday = dow === 0 ? 6 : dow - 1;
+  d.setDate(d.getDate()-daysSinceMonday);
+  return d;
+}
+
+const ROUTINE_ALGO_EXPLANATION = `How a routine gets picked, in plain English:
+
+1. Start with every exercise of this type that isn't archived and wasn't in your last 3 routines of this type — those are off-limits no matter what.
+
+2. Everything else gets scored (lower score = more likely to be picked), based on three things, weighted roughly equally:
+   • How many times you've done it — less done scores better
+   • How long since you last did it — longer ago scores better
+   • How worked that muscle/joint group has been over the last 4 weeks — less worked scores better
+   Favorites and "Work On" exercises each get a 25% score cut that makes them show up more often — an exercise that's both gets the cut twice (about 44% total).
+
+3. Exercises you did 4-6 routines ago get a small penalty so they don't come back too soon.
+
+4. One exercise you've never done before is always included, so new exercises get a chance.
+
+5. The 80 best-scoring exercises (plus that 1 new one) get sent to the AI, which builds your 10-exercise routine — covering 6+ different body regions (a "region" is each exercise's first listed muscle/joint tag, e.g. Hamstrings, Shoulders, Lower Back), at most 2 exercises per region, favoring the best-scoring ones.`;
+
+function InfoTooltip({ text }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span style={{position:"relative",display:"inline-flex",alignItems:"center"}}>
+      <button onClick={()=>setOpen(o=>!o)} onBlur={()=>setTimeout(()=>setOpen(false),150)} style={{width:15,height:15,borderRadius:"50%",background:"none",border:"1px solid "+DARK.text3,color:DARK.text3,fontSize:10,lineHeight:1,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0,flexShrink:0}}>i</button>
+      {open && (
+        <div style={{position:"absolute",top:20,left:0,zIndex:50,width:280,background:DARK.bg3,border:"0.5px solid "+DARK.border2,borderRadius:8,padding:12,fontSize:11,lineHeight:1.6,color:DARK.text2,boxShadow:"0 6px 20px rgba(0,0,0,0.4)",whiteSpace:"pre-line"}}>
+          {text}
+        </div>
+      )}
+    </span>
+  );
+}
 
 function sortRoutines(routines) {
   return [...routines].sort((a,b) => {
@@ -272,7 +410,7 @@ function Tag({ label, color }) {
 }
 
 // ── WorkoutView ───────────────────────────────────────────────
-function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise, onSaveRoutine, onSwapExercise, exerciseCompletionCounts, exerciseLastCompleted }) {
+function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise, onSaveRoutine, onSwapExercise, exerciseCompletionCounts, exerciseLastCompleted, allExercises, recentExercisesByType }) {
   const [editId, setEditId] = useState(null);
   const [editFields, setEditFields] = useState({});
   const [swapSeq, setSwapSeq] = useState({}); // slotIdx → ordered array of shown exercise IDs
@@ -290,17 +428,20 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
     const otherIds = new Set(exercises.filter((_,i2)=>i2!==idx).map(e=>e.id));
     const shownIds = new Set(fullSeq);
     const currentNeverDone = (exerciseCompletionCounts[ex.id]||0) === 0;
-    const score = e => { const r=exerciseCompletionCounts[e.id]||0; return (e.favorite==="Favorite"||e.workOn==="Work On")?r*0.667:r; };
+    const score = e => { const r=exerciseCompletionCounts[e.id]||0; return r*favWorkOnBoost(e); };
+    const pool0 = allExercises || EXERCISES;
+    // Exercises completed in the last 3 same-type routines are never eligible (hard override)
+    const recentLast3 = recentExercisesByType?.[routine.type]?.last3 || new Set();
 
-    // Pool: exercises of same type, not yet shown at this slot, not in other slots
-    let pool = EXERCISES.filter(e => e.type===routine.type && !shownIds.has(e.id) && !otherIds.has(e.id));
+    // Pool: exercises of same type, not archived, not too-recently done, not yet shown at this slot, not in other slots
+    let pool = pool0.filter(e => e.type===routine.type && !e.archived && !recentLast3.has(e.id) && !shownIds.has(e.id) && !otherIds.has(e.id));
 
     // Broadening pass: if same-muscle pool empty, use any not-shown, not-other
     // Cycling: if fully exhausted, wrap back through the slot sequence
     if (pool.length === 0 && fullSeq.length >= 2) {
       const cycleId = fullSeq[(fullSeq.lastIndexOf(ex.id) - 1 + fullSeq.length) % fullSeq.length];
-      const cycleEx = EXERCISES.find(e => e.id === cycleId);
-      if (cycleEx) { onSwapExercise(idx, cycleEx); return; }
+      const cycleEx = pool0.find(e => e.id === cycleId);
+      if (cycleEx && !cycleEx.archived && !recentLast3.has(cycleEx.id)) { onSwapExercise(idx, cycleEx); return; }
     }
     if (pool.length === 0) return;
 
@@ -395,7 +536,10 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
                     <MuscleTagPicker value={editFields.muscleTags||[]} onChange={tags=>setEditFields(p=>({...p,muscleTags:tags}))}/>
                   </div>
 
-                  <button onClick={() => saveEdit(ex)} style={{gridColumn:"1/-1",padding:"7px",borderRadius:6,fontSize:13,fontWeight:600,background:"#E8B84B",color:"#1a1a00",border:"none",cursor:"pointer",marginTop:2}}>Save Changes</button>
+                  <div style={{gridColumn:"1/-1",display:"flex",gap:8,marginTop:2}}>
+                    <button onClick={() => saveEdit(ex)} style={{flex:1,padding:"7px",borderRadius:6,fontSize:13,fontWeight:600,background:"#E8B84B",color:"#1a1a00",border:"none",cursor:"pointer"}}>Save Changes</button>
+                    <button onClick={() => { onUpdateExercise(ex.id, {archived:!ex.archived}); setEditId(null); }} style={{padding:"7px 12px",borderRadius:6,fontSize:13,fontWeight:600,background:"#C00000",border:"0.5px solid #C00000",color:"#ffffff",cursor:"pointer"}}>{ex.archived?"Restore":"Archive"}</button>
+                  </div>
                 </div>
               )}
             </div>
@@ -409,14 +553,24 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
 }
 
 // ── AddCompletionForm ─────────────────────────────────────────
+const CUSTOM_COMPLETION_OPTIONS = {
+  "custom-s": { name: "Custom Stretching (no routine)", type: "Stretching" },
+  "custom-m": { name: "Custom Mobility (no routine)", type: "Mobility" },
+};
+
 function AddCompletionForm({ allRoutines, onAdd, onClose }) {
   const [addDate, setAddDate] = useState(new Date().toISOString().split("T")[0]);
   const [addRoutineId, setAddRoutineId] = useState("");
   const doAdd = () => {
     if (!addRoutineId || !addDate) return;
+    const custom = CUSTOM_COMPLETION_OPTIONS[addRoutineId];
+    if (custom) {
+      onAdd({id:`manual-${Date.now()}`,routineId:addRoutineId,routineName:custom.name,routineType:custom.type,date:addDate,exerciseIds:[]});
+      return;
+    }
     const r = allRoutines.find(r => r.id === addRoutineId);
     if (!r) return;
-    onAdd({id:`manual-${Date.now()}`,routineId:r.id,routineName:r.name,date:addDate});
+    onAdd({id:`manual-${Date.now()}`,routineId:r.id,routineName:r.name,routineType:r.type,date:addDate,exerciseIds:[]});
   };
   return (
     <div style={{background:DARK.bg3,borderRadius:8,border:"0.5px solid "+DARK.border,padding:14,marginBottom:14}}>
@@ -433,6 +587,8 @@ function AddCompletionForm({ allRoutines, onAdd, onClose }) {
           <div style={{fontSize:11,color:DARK.text2,marginBottom:4}}>Routine</div>
           <select value={addRoutineId} onChange={e => setAddRoutineId(e.target.value)} style={{width:"100%"}}>
             <option value="">Select...</option>
+            <option value="custom-s">S (custom)</option>
+            <option value="custom-m">M (custom)</option>
             {sortRoutines(allRoutines).map(r => <option key={r.id} value={r.id}>{r.name} ({r.type})</option>)}
           </select>
         </div>
@@ -443,7 +599,7 @@ function AddCompletionForm({ allRoutines, onAdd, onClose }) {
 }
 
 // ── ExerciseInlineEdit ────────────────────────────────────────
-function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount, lastDate }) {
+function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount, lastDate, likelihood }) {
   const [editing, setEditing] = useState(false);
   const [fields, setFields] = useState({});
   const start = () => { setEditing(true); setFields({name:e.name||"",reps:e.type==="Stretching"?(e.reps||"N/A"):e.reps||"",video:e.video||"",muscleTags:[...(e.muscleTags||[])],bodyPosition:e.bodyPosition||"",favorite:e.favorite||"No",workOn:e.workOn||"No",type:e.type||"Stretching"}); };
@@ -466,6 +622,14 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount, lastDate }) {
           {(liveCount||0)>0&&<span><span style={{color:DARK.text2}}>Completions: </span>{liveCount}</span>}
         </div>
         {e.routines && e.routines.length > 0 && <div style={{gridColumn:"1/-1"}}><span style={{color:DARK.text2}}>Routines: </span>{e.routines.join(", ")}</div>}
+        {likelihood && (
+          <div style={{gridColumn:"1/-1"}}>
+            <span style={{color:DARK.text2}}>Selection Likelihood: </span>
+            {likelihood.excludedRecent
+              ? <span>Excluded — done in last 3 {e.type} routines</span>
+              : <span>{likelihood.tier} ({likelihood.percent}%)</span>}
+          </div>
+        )}
       </div>
       {e.video && !editing && <a href={e.video} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:12,color:S_COLOR,textDecoration:"none",marginTop:8}}>&#9654; Watch video</a>}
       {!editing ? (
@@ -493,9 +657,9 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount, lastDate }) {
               <span style={{fontSize:20,lineHeight:1,color:"#E8B84B"}}>&#9733;</span>
               <span style={{fontSize:12,color:fields.favorite==="Favorite"?"#C49A00":DARK.text2,fontWeight:fields.favorite==="Favorite"?600:400}}>Favorite</span>
             </button>
-            <button onClick={()=>setFields(p=>({...p,workOn:p.workOn==="Work On"?"No":"Work On"}))} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,fontSize:14,border:"0.5px solid",borderColor:fields.workOn==="Work On"?"#8B000066":DARK.border2,background:fields.workOn==="Work On"?"#8B000022":DARK.bg,cursor:"pointer",transition:"all 0.15s"}}>
+            <button onClick={()=>setFields(p=>({...p,workOn:p.workOn==="Work On"?"No":"Work On"}))} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,fontSize:14,border:"0.5px solid",borderColor:fields.workOn==="Work On"?"#E8B84B66":DARK.border2,background:fields.workOn==="Work On"?"#E8B84B22":DARK.bg,cursor:"pointer",transition:"all 0.15s"}}>
               <span style={{fontSize:12,lineHeight:1,color:"#e06666"}}>&#128170;</span>
-              <span style={{fontSize:12,color:fields.workOn==="Work On"?"#e06666":DARK.text2,fontWeight:fields.workOn==="Work On"?600:400}}>Work On</span>
+              <span style={{fontSize:12,color:fields.workOn==="Work On"?"#C49A00":DARK.text2,fontWeight:fields.workOn==="Work On"?600:400}}>Work On</span>
             </button>
           </div>
           {[["reps","Reps"],["bodyPosition","Body Position"],["video","Video URL"]].map(([field,label]) => (
@@ -518,6 +682,7 @@ function ExerciseInlineEdit({ e, onUpdate, onDelete, liveCount, lastDate }) {
           <div style={{display:"flex",gap:8,gridColumn:"1/-1"}}>
             <button onClick={save} style={{flex:1,padding:"7px",borderRadius:6,fontSize:13,fontWeight:600,background:"#E8B84B",color:"#1a1a00",border:"none",cursor:"pointer"}}>Save</button>
             <button onClick={() => setEditing(false)} style={{padding:"7px 12px",borderRadius:6,fontSize:13,background:"none",border:"0.5px solid "+DARK.border2,color:DARK.text2,cursor:"pointer"}}>Cancel</button>
+            <button onClick={()=>{onUpdate(e.id,{archived:!e.archived});setEditing(false);}} style={{padding:"7px 12px",borderRadius:6,fontSize:13,fontWeight:600,background:"#C00000",border:"0.5px solid #C00000",color:"#ffffff",cursor:"pointer"}}>{e.archived?"Restore":"Archive"}</button>
           </div>
         </div>
       )}
@@ -589,9 +754,9 @@ function AddExerciseForm({ onSave, onClose }) {
           <span style={{fontSize:20,color:"#E8B84B"}}>&#9733;</span>
           <span style={{fontSize:13,color:favorite==="Favorite"?"#C49A00":DARK.text2,fontWeight:favorite==="Favorite"?600:400}}>Favorite</span>
         </button>
-        <button onClick={()=>setWorkOn(v=>v==="Work On"?"No":"Work On")} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,border:"0.5px solid",borderColor:workOn==="Work On"?"#8B000066":DARK.border2,background:workOn==="Work On"?"#8B000022":DARK.bg,cursor:"pointer"}}>
+        <button onClick={()=>setWorkOn(v=>v==="Work On"?"No":"Work On")} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,border:"0.5px solid",borderColor:workOn==="Work On"?"#E8B84B66":DARK.border2,background:workOn==="Work On"?"#E8B84B22":DARK.bg,cursor:"pointer"}}>
           <span style={{fontSize:12,color:"#e06666"}}>&#128170;</span>
-          <span style={{fontSize:13,color:workOn==="Work On"?"#e06666":DARK.text2,fontWeight:workOn==="Work On"?600:400}}>Work On</span>
+          <span style={{fontSize:13,color:workOn==="Work On"?"#C49A00":DARK.text2,fontWeight:workOn==="Work On"?600:400}}>Work On</span>
         </button>
       </div>
       <button onClick={save} disabled={!name.trim()} style={{width:"100%",padding:"11px",borderRadius:8,fontSize:14,fontWeight:600,background:name.trim()?S_COLOR:DARK.bg2,color:name.trim()?"white":DARK.text3,border:"none",cursor:name.trim()?"pointer":"default"}}>Add Exercise</button>
@@ -601,7 +766,7 @@ function AddExerciseForm({ onSave, onClose }) {
 
 // ── NewRoutineBuilder ─────────────────────────────────────────
 
-function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletionCounts, exerciseLastCompleted, recentExercisesByType, onStart, onClose }) {
+function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletionCounts, exerciseLastCompleted, recentExercisesByType, muscleFrequency4wk, allExercises, onStart, onClose }) {
   const [step, setStep] = useState("generating");
   const [routineType] = useState(filterType||"Stretching");
   const [exercises, setExercises] = useState([]);
@@ -614,25 +779,23 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
   const generate = async type => {
     setLoading(true); setError(null); setStep("generating");
     try {
-      // Score exercises: blend completion count (80%) + recency (20%)
-      // FAV/IMPROVE halves effective done count (2:1 boost)
       const today = new Date();
-      const MAX_DONE = Math.max(1, ...EXERCISES.filter(e=>e.type===type).map(e=>exerciseCompletionCounts[e.id]||0)); // dynamic cap
       const MAX_DAYS = 90;  // recency cap in days
+      const source = (allExercises||EXERCISES).filter(e => e.type === type && !e.archived);
+      // Dynamic cap computed over the full (unarchived) pool so the 0..1 scale doesn't
+      // shift just because the hard 3-routine exclusion below removes a few exercises.
+      const MAX_DONE = Math.max(1, ...source.map(e=>exerciseCompletionCounts[e.id]||0));
 
-      // Build scored candidates
-      // Compute weighted muscle contributions per exercise (tag order: 1, 0.5, 0.25, 0.125)
-      const getMuscleWeights = ex => {
-        const tags = ex.muscleTags || [ex.bodyRegion];
-        const weights = {};
-        tags.forEach((t, i) => { weights[t] = (weights[t]||0) + Math.pow(0.5, i); });
-        // Normalize so total weight = 1 regardless of tag count
-        const total = Object.values(weights).reduce((s,v)=>s+v, 0) || 1;
-        Object.keys(weights).forEach(k => { weights[k] /= total; });
-        return weights;
-      };
+      const recent = recentExercisesByType?.[type] || { last3: new Set(), last6: new Set() };
+      // HARD OVERRIDE: an exercise completed in any of the last 3 same-type routines is
+      // never eligible for selection here — this never gets softened or bypassed.
+      const eligible = source.filter(e => !recent.last3.has(e.id));
 
-      const allCandidates = EXERCISES.filter(e => e.type === type).map(e => {
+      // Muscle/joint-group balance: how saturated has each tag been over the trailing 4 weeks?
+      const muscleFreq = muscleFrequency4wk?.[type] || {};
+      const maxMuscleFreq = Math.max(1, ...Object.values(muscleFreq));
+
+      const allCandidates = eligible.map(e => {
         const rarity = exerciseRoutineCount[e.id]||0;
         const rawDone = exerciseCompletionCounts[e.id]||0;
         const normDone = Math.min(rawDone, MAX_DONE) / MAX_DONE;
@@ -643,20 +806,25 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
           : MAX_DAYS;
         const normRecency = Math.min(daysSince, MAX_DAYS) / MAX_DAYS;
 
-        const recent = recentExercisesByType?.[type] || { last3: new Set(), last6: new Set() };
-        const inLast3 = recent.last3.has(e.id);
-        const inLast6 = recent.last6.has(e.id);
-        const recencyPenalty = inLast3 ? 0.8 : inLast6 ? 0.35 : 0;
+        // last3 is already hard-excluded above; last4-6 still gets a soft penalty
+        const recencyPenalty = recent.last6.has(e.id) ? 0.35 : 0;
+
+        // Weighted muscle contributions per exercise (tag order: 1, 0.5, 0.25, 0.125...)
+        const muscleWeights = getMuscleTagWeights(e);
+        // 0..1: how worked, relative to the most-worked muscle/joint of this type, are
+        // THIS exercise's muscles — weighted by how central each tag is to the exercise.
+        const normMuscleFreq = Object.entries(muscleWeights)
+          .reduce((sum,[tag,w]) => sum + w * ((muscleFreq[tag]||0) / maxMuscleFreq), 0);
 
         // Small random jitter (±10%) for variety between regenerations
         const jitter = (Math.random() - 0.5) * 0.2;
-        // Equal weight: 50% completion count, 50% recency. No rarity penalty.
-        const favBoost = (e.favorite==="Favorite"||e.workOn==="Work On") ? 0.667 : 1.0;
-        const score = (normDone * 0.5 + (1 - normRecency) * 0.5 + recencyPenalty + jitter) * favBoost;
+        const favBoost = favWorkOnBoost(e);
+        // Lower score = higher priority. Completion count, recency, and muscle-group
+        // saturation each pull roughly a third of the weight.
+        const score = (normDone * 0.35 + (1 - normRecency) * 0.35 + normMuscleFreq * 0.3 + recencyPenalty + jitter) * favBoost;
 
-        const neverDone = (exerciseCompletionCounts[e.id]||0) === 0;
+        const neverDone = rawDone === 0;
         const flags = [e.favorite==="Favorite"?"FAV":"", e.workOn==="Work On"?"IMPROVE":""].filter(Boolean).join(",");
-        const muscleWeights = getMuscleWeights(e);
         return { e, rarity, score, flags, neverDone, muscleWeights };
       });
 
@@ -676,14 +844,16 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
       const forcedId = forcedNever ? forcedNever.e.id : null;
       const list = topCandidates.map(({e, rarity, score, flags, neverDone, muscleWeights}) => {
         const mw = Object.entries(muscleWeights).map(([k,v])=>`${k}:${v.toFixed(2)}`).join(",");
-        return `${e.id}|${e.name}|${e.bodyRegion}|${e.bodyPosition}|${score.toFixed(2)}|[${mw}]${neverDone?"|NEW":""}${flags?"|"+flags:""}`;
+        // Region = this exercise's first (most central) muscle/joint tag, not the coarser bodyRegion field.
+        const region = (e.muscleTags && e.muscleTags[0]) || e.bodyRegion;
+        return `${e.id}|${e.name}|${region}|${e.bodyPosition}|${score.toFixed(2)}|[${mw}]${neverDone?"|NEW":""}${flags?"|"+flags:""}`;
       }).join("\n");
       const forcedNote = forcedId ? `\nIMPORTANT: You MUST include exactly this one NEW exercise: ${forcedId}. Include no other NEW-tagged exercises.` : "";
       const resp = await fetch("/api/generate", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
-          system:`Pick 10 ${type} exercises. Cover 6+ body regions, max 2 per region. Prefer lower score. Exercises tagged NEW have never been done — include exactly 1 NEW exercise and no more.${forcedNote} Return ONLY JSON: {"exerciseIds":["id1","id2","id3","id4","id5","id6","id7","id8","id9","id10"]}\n\n${list}`,
+          system:`Pick 10 ${type} exercises. Each exercise's region below is its first listed muscle/joint tag. Cover 6+ different regions, max 2 exercises per region. Prefer lower score. Exercises tagged NEW have never been done — include exactly 1 NEW exercise and no more.${forcedNote} Return ONLY JSON: {"exerciseIds":["id1","id2","id3","id4","id5","id6","id7","id8","id9","id10"]}\n\n${list}`,
           userMessage:`Create ${type} routine`
         })
       });
@@ -695,7 +865,7 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
       if (s===-1) throw new Error("No JSON in AI response: "+text.slice(0,100));
       const parsed = JSON.parse(text.slice(s,e2+1));
       if (!parsed.exerciseIds||parsed.exerciseIds.length!==10) throw new Error("Did not return 10 exercises");
-      let exObjs = parsed.exerciseIds.map(id=>EXERCISES.find(e=>e.id===id)).filter(Boolean);
+      let exObjs = parsed.exerciseIds.map(id=>(allExercises||EXERCISES).find(e=>e.id===id)).filter(Boolean);
       // If AI returned fewer than 10 valid exercises, pad with top-scored candidates not already included
       if (exObjs.length < 10) {
         const usedIds = new Set(exObjs.map(e=>e.id));
@@ -727,15 +897,18 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
     const swappedOut = slot.swappedOut || new Set();
     const usedIds = new Set(exercises.map(item=>item.ex.id));
     const currentNeverDone = (exerciseCompletionCounts[current.id]||0) === 0;
-    const score = e => { const r=exerciseCompletionCounts[e.id]||0; return (e.favorite==="Favorite"||e.workOn==="Work On")?r*0.5:r; };
+    const score = e => { const r=exerciseCompletionCounts[e.id]||0; return r*favWorkOnBoost(e); };
 
     // After 5 swaps, reset soft exclusions (allow revisiting earlier swaps)
     const softExclude = swappedOut.size < 5
       ? new Set([...swappedOut, ...usedIds])
       : new Set([...usedIds]);
 
-    const pool = EXERCISES.filter(e => e.type===routineType && !softExclude.has(e.id));
-    const fallback = pool.length > 0 ? pool : EXERCISES.filter(e => e.type===routineType && !usedIds.has(e.id));
+    const source = allExercises||EXERCISES;
+    // Same hard override as generate(): never resurface an exercise from the last 3 same-type routines
+    const recentLast3 = recentExercisesByType?.[routineType]?.last3 || new Set();
+    const pool = source.filter(e => e.type===routineType && !e.archived && !recentLast3.has(e.id) && !softExclude.has(e.id));
+    const fallback = pool.length > 0 ? pool : source.filter(e => e.type===routineType && !e.archived && !recentLast3.has(e.id) && !usedIds.has(e.id));
 
     const pickFrom = candidates => {
       const never = candidates.filter(e=>(exerciseCompletionCounts[e.id]||0)===0);
@@ -788,7 +961,8 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
       <div style={{display:"grid",gap:6,marginBottom:14}}>
         {exercises.map(({ex},i)=>{
           const color=REGION_COLORS[ex.bodyRegion]||"#888";
-          const alts = EXERCISES.filter(e=>e.id!==ex.id&&e.type===routineType&&(e.bodyRegion===ex.bodyRegion||(e.muscleTags||[]).some(t=>(ex.muscleTags||[]).includes(t)))&&!exercises.map(item=>item.ex.id).includes(e.id)).sort((a,b)=>(exerciseRoutineCount[a.id]||0)-(exerciseRoutineCount[b.id]||0)).slice(0,5);
+          const recentLast3 = recentExercisesByType?.[routineType]?.last3 || new Set();
+          const alts = (allExercises||EXERCISES).filter(e=>e.id!==ex.id&&e.type===routineType&&!e.archived&&!recentLast3.has(e.id)&&(e.bodyRegion===ex.bodyRegion||(e.muscleTags||[]).some(t=>(ex.muscleTags||[]).includes(t)))&&!exercises.map(item=>item.ex.id).includes(e.id)).sort((a,b)=>(exerciseRoutineCount[a.id]||0)-(exerciseRoutineCount[b.id]||0)).slice(0,5);
           return (
             <div key={ex.id}>
               <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 11px",borderRadius:8,border:"0.5px solid "+DARK.border,background:DARK.bg2}}>
@@ -824,63 +998,6 @@ function NewRoutineBuilder({ filterType, exerciseRoutineCount, exerciseCompletio
   );
 }
 
-// ── AiRoutineModal ────────────────────────────────────────────
-function AiRoutineModal({ onStart, onClose, exerciseCompletionCounts }) {
-  const [prompt, setPrompt] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  const generate = async () => {
-    if (!prompt.trim()||loading) return;
-    setLoading(true); setError(null);
-    try {
-      const exerciseList = EXERCISES.map(e => {
-        const rawDone = exerciseCompletionCounts[e.id]||0;
-        const boosted = (e.favorite==="Favorite"||e.workOn==="Work On") ? rawDone*0.5 : rawDone;
-        const flags = [e.favorite==="Favorite"?"FAV":"",e.workOn==="Work On"?"IMPROVE":""].filter(Boolean).join(",");
-        return `${e.id}|${e.name}|${e.type}|${e.bodyRegion}|${e.bodyPosition}|d:${Math.round(boosted)}${flags?"|"+flags:""}`;
-      }).join("\n");
-      const response = await fetch("/api/generate",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          system:`You are a stretching and mobility coach. Select exactly 10 exercises that best address the user description. Mix types appropriately. Prioritize body regions mentioned. Favor FAV/IMPROVE exercises and lower done counts. Return ONLY JSON: {"label":"short label","exerciseIds":["id1","id2","id3","id4","id5","id6","id7","id8","id9","id10"]}\n\nExercises:\n${exerciseList}`,
-          userMessage:prompt
-        })
-      });
-      const data = await response.json();
-      if (data.error) throw new Error(`API error: ${data.error.message||data.error.type||JSON.stringify(data.error)}`);
-      const text = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
-      if (!text) throw new Error(`No AI response. Status: ${response.status}. Response: ${JSON.stringify(data).slice(0,200)}`);
-      const s=text.indexOf("{"),e2=text.lastIndexOf("}");
-      if(s===-1) throw new Error("No JSON in AI response: "+text.slice(0,100));
-      const parsed=JSON.parse(text.slice(s,e2+1));
-      if(!parsed.exerciseIds||parsed.exerciseIds.length!==10) throw new Error("Could not build routine");
-      onStart(parsed.label||"Custom Routine",parsed.exerciseIds);
-    } catch(e) {
-      setError(e.message||"Something went wrong. Try again.");
-    } finally { setLoading(false); }
-  };
-
-  return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
-      <div style={{background:DARK.bg,borderRadius:14,padding:24,width:"100%",maxWidth:480,border:"0.5px solid "+DARK.border}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <h2 style={{fontSize:16,fontWeight:500,margin:0}}>AI Routine Generator</h2>
-          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:DARK.text2,fontSize:18,lineHeight:1}}>&#10005;</button>
-        </div>
-        <p style={{fontSize:13,color:DARK.text2,margin:"0 0 14px",lineHeight:1.5}}>Describe how you are feeling or what you need. A 10-exercise routine will be built for you.</p>
-        <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&(e.metaKey||e.ctrlKey))generate();}} placeholder="e.g. I just went cycling and my legs are tight. My neck is also sore." rows={3} style={{width:"100%",boxSizing:"border-box",resize:"none",marginBottom:12,fontSize:14,lineHeight:1.5,padding:"10px 12px",borderRadius:8,border:"0.5px solid "+DARK.border,background:DARK.bg2,color:DARK.text,fontFamily:"inherit"}}/>
-        {error&&<p style={{fontSize:12,color:"#C00000",margin:"0 0 10px"}}>{error}</p>}
-        <button onClick={generate} disabled={!prompt.trim()||loading} style={{width:"100%",padding:"11px",borderRadius:8,fontSize:14,fontWeight:500,background:(!prompt.trim()||loading)?DARK.bg2:DARK.text,color:(!prompt.trim()||loading)?DARK.text3:DARK.bg,border:"none",cursor:(!prompt.trim()||loading)?"default":"pointer"}}>
-          {loading?"Building your routine...":"Generate Routine"}
-        </button>
-        <p style={{fontSize:11,color:DARK.text3,margin:"10px 0 0",textAlign:"center"}}>Cmd/Ctrl + Enter to generate</p>
-      </div>
-    </div>
-  );
-}
-
 // ── App ───────────────────────────────────────────────────────
 export default function App() {
   const [tab, setTab] = useState("routines");
@@ -893,14 +1010,15 @@ export default function App() {
   const [filterRegion, setFilterRegion] = useState("All");
   const [filterFav, setFilterFav] = useState(false);
   const [filterWorkOn, setFilterWorkOn] = useState(false);
+  const [filterArchived, setFilterArchived] = useState(false);
   const [searchQ, setSearchQ] = useState("");
-  const [exSortBy, setExSortBy] = useState("name");
+  const [exSortBy, setExSortBy] = useState("likelihood");
+  const [exSortDir, setExSortDir] = useState("desc"); // "desc" = most likely/most completed first; "asc" = reversed
   const [activeWorkout, setActiveWorkout] = useState(null);
   const [selectedEx, setSelectedEx] = useState(null);
   const [showNewRoutine, setShowNewRoutine] = useState(false);
   const [expandedRoutineSection, setExpandedRoutineSection] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [showAiModal, setShowAiModal] = useState(false);
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showExercisesToAdd, setShowExercisesToAdd] = useState(false);
   const [exercisesToAddNotes, setExercisesToAddNotes] = useState(() => {
@@ -913,6 +1031,10 @@ export default function App() {
   const [editCompletionFields, setEditCompletionFields] = useState({});
   const [confirmDelete, setConfirmDelete] = useState(null); // {type, id, label}
   const chartRef = useRef(null);
+  const muscleChartRef = useRef(null);
+  const [selectedMuscleTags, setSelectedMuscleTags] = useState(() => new Set()); // empty = show all
+  const [hoveredMuscleTag, setHoveredMuscleTag] = useState(null);
+  const [muscleChartMode, setMuscleChartMode] = useState("line"); // "line" | "area"
 
   useEffect(() => {
     async function loadFromSupabase() {
@@ -1120,19 +1242,22 @@ export default function App() {
     return ["All", ...Array.from(all).sort()];
   }, [allExercises]);
 
-  const filteredExercises = useMemo(() => {
-    const filtered = allExercises.filter(e => {
-      if (exFilterType!=="All" && e.type!==exFilterType) return false;
-      if (filterRegion!=="All" && !(e.muscleTags||[e.bodyRegion]).includes(filterRegion)) return false;
-      if (filterFav && e.favorite!=="Favorite") return false;
-      if (filterWorkOn && e.workOn!=="Work On") return false;
-      if (searchQ && !e.name.toLowerCase().includes(searchQ.toLowerCase())) return false;
-      return true;
-    });
-    if (exSortBy==="completions") return filtered.sort((a,b) => (exerciseCompletionCounts[b.id]||0)-(exerciseCompletionCounts[a.id]||0));
-    if (exSortBy==="bodyPart") return filtered.sort((a,b) => (a.bodyRegion||"").localeCompare(b.bodyRegion||"")||a.name.localeCompare(b.name));
-    return filtered.sort((a,b) => a.name.localeCompare(b.name));
-  }, [allExercises, exFilterType, filterRegion, filterFav, filterWorkOn, searchQ, exSortBy, exerciseCompletionCounts]);
+  // Exercise counts shown in filter-chip labels, e.g. "Mobility (152)". Based on the
+  // non-archived pool (the default view) except the Archived count itself.
+  const exerciseCounts = useMemo(() => {
+    const nonArchived = allExercises.filter(e=>!e.archived);
+    const byRegion = {};
+    nonArchived.forEach(e => (e.muscleTags||[e.bodyRegion]).forEach(t => { if (t) byRegion[t]=(byRegion[t]||0)+1; }));
+    return {
+      all: nonArchived.length,
+      Stretching: nonArchived.filter(e=>e.type==="Stretching").length,
+      Mobility: nonArchived.filter(e=>e.type==="Mobility").length,
+      favorite: nonArchived.filter(e=>e.favorite==="Favorite").length,
+      workOn: nonArchived.filter(e=>e.workOn==="Work On").length,
+      archived: allExercises.filter(e=>e.archived).length,
+      byRegion,
+    };
+  }, [allExercises]);
 
   const allRoutines = useMemo(() => sortRoutines([...ROUTINES_BASE, ...customRoutines]), [customRoutines]);
 
@@ -1162,11 +1287,112 @@ export default function App() {
     return result;
   }, [completions, allRoutines]);
 
+  // Weighted muscle/joint-group frequency over the trailing 4 weeks (28 days), per routine type.
+  // Each completion's exercises contribute to their tags, weighted by tag order (1st tag=1,
+  // 2nd=0.5, 3rd=0.25...) via getMuscleTagWeights. Powers the muscle-balance term in the
+  // routine generator so heavily-worked joints/muscles are deprioritized relative to neglected ones.
+  const muscleFrequency4wk = useMemo(() => {
+    const todayPST = new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
+    const cutoff = new Date(todayPST+"T00:00:00");
+    cutoff.setDate(cutoff.getDate()-28);
+    const cutoffStr = cutoff.toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
+    const result = { Stretching: {}, Mobility: {} };
+    completions.filter(c => c.date >= cutoffStr).forEach(c => {
+      const r = allRoutines.find(rt => rt.id === c.routineId);
+      const type = r?.type || c.routineType;
+      if (type !== "Stretching" && type !== "Mobility") return;
+      const ids = c.exerciseIds?.length > 0 ? c.exerciseIds : (r?.exerciseIds || []);
+      ids.forEach(id => {
+        const ex = allExercises.find(e => e.id === id);
+        if (!ex) return;
+        const weights = getMuscleTagWeights(ex);
+        Object.entries(weights).forEach(([tag, w]) => {
+          result[type][tag] = (result[type][tag]||0) + w;
+        });
+      });
+    });
+    return result;
+  }, [completions, allRoutines, allExercises]);
+
   const exerciseRoutineCount = useMemo(() => {
     const counts = {};
-    EXERCISES.forEach(ex => { counts[ex.id] = ex.routines?.length||0; });
+    allExercises.forEach(ex => { counts[ex.id] = ex.routines?.length||0; });
     return counts;
-  }, []);
+  }, [allExercises]);
+
+  // Selection Likelihood: mirrors the scoring formula in NewRoutineBuilder.generate() (same
+  // three weighted factors — completion count, recency, muscle-group saturation — plus the
+  // favorite/work-on boost and the 4-6-routines-ago penalty) but without the per-generation
+  // random jitter, so it's a stable value to show in the Exercises tab. An exercise only ever
+  // competes against others of its own type, so this is computed once per type.
+  const selectionLikelihood = useMemo(() => {
+    const today = new Date();
+    const MAX_DAYS = 90;
+    const result = {};
+    ["Stretching","Mobility"].forEach(type => {
+      const source = allExercises.filter(e => e.type === type && !e.archived);
+      const MAX_DONE = Math.max(1, ...source.map(e=>exerciseCompletionCounts[e.id]||0));
+      const recent = recentExercisesByType?.[type] || { last3: new Set(), last6: new Set() };
+      const muscleFreq = muscleFrequency4wk?.[type] || {};
+      const maxMuscleFreq = Math.max(1, ...Object.values(muscleFreq));
+      const scored = source.map(e => {
+        const rawDone = exerciseCompletionCounts[e.id]||0;
+        const normDone = Math.min(rawDone, MAX_DONE) / MAX_DONE;
+        const lastDate = exerciseLastCompleted[e.id];
+        const daysSince = lastDate ? Math.floor((today - new Date(lastDate+"T12:00:00")) / 86400000) : MAX_DAYS;
+        const normRecency = Math.min(daysSince, MAX_DAYS) / MAX_DAYS;
+        const recencyPenalty = recent.last6.has(e.id) ? 0.35 : 0;
+        const muscleWeights = getMuscleTagWeights(e);
+        const normMuscleFreq = Object.entries(muscleWeights).reduce((sum,[tag,w]) => sum + w * ((muscleFreq[tag]||0) / maxMuscleFreq), 0);
+        const favBoost = favWorkOnBoost(e);
+        const score = (normDone*0.35 + (1-normRecency)*0.35 + normMuscleFreq*0.3 + recencyPenalty) * favBoost;
+        return { id: e.id, score, excludedRecent: recent.last3.has(e.id) };
+      }).sort((a,b) => a.score - b.score);
+      const n = scored.length;
+      scored.forEach((s, rank) => {
+        // Capped at 99% — even the single best-scored candidate isn't a sure thing, since
+        // the AI still has to balance 6+ body regions (max 2 each) when it picks the 10.
+        const percent = n > 1 ? Math.round(99 * (1 - rank/(n-1))) : 99;
+        let tier;
+        if (percent >= 80) tier = "Very Likely";
+        else if (percent >= 60) tier = "Likely";
+        else if (percent >= 40) tier = "Moderate";
+        else if (percent >= 20) tier = "Unlikely";
+        else tier = "Very Unlikely";
+        result[s.id] = { percent, tier, rank: rank+1, poolSize: n, excludedRecent: s.excludedRecent };
+      });
+    });
+    return result;
+  }, [allExercises, exerciseCompletionCounts, exerciseLastCompleted, recentExercisesByType, muscleFrequency4wk]);
+
+  const filteredExercises = useMemo(() => {
+    const filtered = allExercises.filter(e => {
+      if (filterArchived) { if (!e.archived) return false; }
+      else if (e.archived) return false;
+      if (exFilterType!=="All" && e.type!==exFilterType) return false;
+      if (filterRegion!=="All" && !(e.muscleTags||[e.bodyRegion]).includes(filterRegion)) return false;
+      if (filterFav && e.favorite!=="Favorite") return false;
+      if (filterWorkOn && e.workOn!=="Work On") return false;
+      if (searchQ && !e.name.toLowerCase().includes(searchQ.toLowerCase())) return false;
+      return true;
+    });
+    if (exSortBy==="likelihood") return filtered.sort((a,b) => {
+      const la=selectionLikelihood[a.id], lb=selectionLikelihood[b.id];
+      // Excluded exercises are treated as worse than even a 0% likelihood, so they land at
+      // whichever end of the sort represents "least likely" — bottom when sorting highest-
+      // first, top when sorting lowest-first — rather than being pinned to a fixed spot.
+      const aVal = la ? (la.excludedRecent ? -1 : la.percent) : -1;
+      const bVal = lb ? (lb.excludedRecent ? -1 : lb.percent) : -1;
+      const diff = bVal - aVal;
+      return exSortDir==="asc" ? -diff : diff;
+    });
+    if (exSortBy==="completions") return filtered.sort((a,b) => {
+      const diff = (exerciseCompletionCounts[b.id]||0) - (exerciseCompletionCounts[a.id]||0);
+      return exSortDir==="asc" ? -diff : diff;
+    });
+    if (exSortBy==="bodyPart") return filtered.sort((a,b) => (a.bodyRegion||"").localeCompare(b.bodyRegion||"")||a.name.localeCompare(b.name));
+    return filtered.sort((a,b) => a.name.localeCompare(b.name));
+  }, [allExercises, exFilterType, filterRegion, filterFav, filterWorkOn, filterArchived, searchQ, exSortBy, exSortDir, exerciseCompletionCounts, selectionLikelihood]);
 
   const filteredRoutines = useMemo(() => {
     const today = new Date();
@@ -1179,7 +1405,7 @@ export default function App() {
         const daysSince = last ? Math.floor((today-new Date(last.date+"T12:00:00"))/86400000) : 999;
         const count = routineCompletionMap[r.id]||0;
         const maxCount = Math.max(...allRoutines.map(p=>routineCompletionMap[p.id]||0),1);
-        const exs = r.exerciseIds.map(id=>EXERCISES.find(e=>e.id===id)).filter(Boolean);
+        const exs = r.exerciseIds.map(id=>allExercises.find(e=>e.id===id)).filter(Boolean);
         const avgExDone = exs.length ? exs.reduce((s,e)=>s+(exerciseCompletionCounts[e.id]||0),0)/exs.length : 0;
         const exRarityScore = 1-Math.min(avgExDone,20)/20;
         const rarityBoost = count<=3?0.2:0;
@@ -1188,7 +1414,7 @@ export default function App() {
       })
       .sort((a,b)=>b.score-a.score)
       .map(s=>s.r);
-  }, [allRoutines, routineType, completions, exerciseCompletionCounts]);
+  }, [allRoutines, routineType, completions, exerciseCompletionCounts, allExercises]);
 
   const lastCompleted = useCallback(routineId => completions.filter(c=>c.routineId===routineId).sort((a,b)=>b.date.localeCompare(a.date))[0]?.date||null, [completions]);
   const completionCount = useCallback(routineId => completions.filter(c=>c.routineId===routineId).length, [completions]);
@@ -1203,26 +1429,75 @@ export default function App() {
     return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
   }, [completions]);
 
-  const weeklyData = useMemo(() => {
-    const weeks=[];
-    // Use PST today
+  // How many Monday-start weeks back the two history charts should scroll: from the week of
+  // the earliest completion in the dataset up through the current week. Falls back to 24 if
+  // there's no history yet.
+  const weekCount = useMemo(() => {
+    if (completions.length === 0) return 24;
     const todayPST = new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
-    const today = new Date(todayPST+"T00:00:00");
-    // Monday start: getDay() returns 0=Sun,1=Mon..6=Sat. Days since last Monday:
-    const dayOfWeek = today.getDay(); // 0=Sun
-    const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    const lastMonday = new Date(today); lastMonday.setDate(today.getDate()-daysSinceMonday);
-    for(let w=23;w>=0;w--){
-      const weekStart=new Date(lastMonday); weekStart.setDate(lastMonday.getDate()-w*7);
-      const weekEnd=new Date(weekStart); weekEnd.setDate(weekStart.getDate()+6);
-      const ws=weekStart.toISOString().split("T")[0]; const we=weekEnd.toISOString().split("T")[0];
+    const earliestDate = completions.reduce((min,c) => (c.date && c.date < min) ? c.date : min, todayPST);
+    const lastMonday = mondayOf(todayPST);
+    const earliestMonday = mondayOf(earliestDate);
+    const diffWeeks = Math.round((lastMonday - earliestMonday) / (7*86400000)) + 1;
+    return Math.max(1, diffWeeks);
+  }, [completions]);
+
+  const weeklyData = useMemo(() => {
+    return getWeekBoundaries(weekCount).map(({ws,we,label}) => {
       const inWeek=completions.filter(c=>c.date>=ws&&c.date<=we);
       const stretching=inWeek.filter(c=>{const r=allRoutines.find(rt=>rt.id===c.routineId);return (r?.type||c.routineType)==="Stretching";}).length;
       const mobility=inWeek.filter(c=>{const r=allRoutines.find(rt=>rt.id===c.routineId);return (r?.type||c.routineType)==="Mobility";}).length;
-      weeks.push({label:weekStart.toLocaleDateString("en-US",{month:"short",day:"numeric"}),stretching,mobility,total:stretching+mobility});
-    }
-    return weeks;
-  }, [completions, allRoutines]);
+      return {label,stretching,mobility,total:stretching+mobility};
+    });
+  }, [completions, allRoutines, weekCount]);
+
+  // Weighted muscle/joint-group workload, broken down by week, over the full scrollable
+  // history — same weighting as muscleFrequency4wk (1st tag on an exercise counts full, 2nd
+  // half, 3rd a quarter...), combined across Stretching + Mobility, and grouped into broader
+  // categories (see MUSCLE_GROUP_MAP) to keep the chart to a manageable number of lines. Each
+  // week's value is a trailing 4-week rolling sum (same window the generator itself uses), not
+  // just that single week's completions, so the line reflects ongoing load, not one-week spikes.
+  const muscleWeeklyData = useMemo(() => {
+    const boundaries = getWeekBoundaries(weekCount);
+    const rawWeeks = boundaries.map(({ws,we}) => {
+      const groupTotals = {};
+      completions.filter(c=>c.date>=ws&&c.date<=we).forEach(c => {
+        const r = allRoutines.find(rt=>rt.id===c.routineId);
+        const type = r?.type || c.routineType;
+        if (type!=="Stretching" && type!=="Mobility") return;
+        const ids = c.exerciseIds?.length>0 ? c.exerciseIds : (r?.exerciseIds||[]);
+        ids.forEach(id => {
+          const ex = allExercises.find(e=>e.id===id);
+          if (!ex) return;
+          const weights = getMuscleTagWeights(ex);
+          Object.entries(weights).forEach(([tag,wt]) => {
+            const group = muscleGroupOf(tag);
+            groupTotals[group] = (groupTotals[group]||0)+wt;
+          });
+        });
+      });
+      return groupTotals;
+    });
+    const allGroups = new Set();
+    rawWeeks.forEach(g => Object.keys(g).forEach(t=>allGroups.add(t)));
+    const weeks = boundaries.map(({label}, i) => {
+      const start = Math.max(0, i-3); // trailing 4 weeks (this week + up to 3 prior)
+      const tagTotals = {};
+      allGroups.forEach(group => {
+        let sum = 0;
+        for (let j=start; j<=i; j++) sum += rawWeeks[j][group]||0;
+        tagTotals[group] = sum;
+      });
+      return { label, tagTotals };
+    });
+    const tags = Array.from(allGroups).sort((a,b) => {
+      const totalA = weeks.reduce((s,w)=>s+(w.tagTotals[a]||0), 0);
+      const totalB = weeks.reduce((s,w)=>s+(w.tagTotals[b]||0), 0);
+      return totalB - totalA;
+    });
+    return { weeks, tags };
+  }, [completions, allRoutines, allExercises, weekCount]);
+
  // For each type, compute which exercise IDs appeared in the last N completions
   const logCompletion = useCallback((routine, exerciseIds) => {
     const c={id:`n-${Date.now()}`,routineId:routine.id,routineName:routine.name,routineType:routine.type||"",date:new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"}),exerciseIds:exerciseIds||[]};
@@ -1248,7 +1523,7 @@ export default function App() {
       if(existing) {
         updated = prev.map(e=>e.id===exerciseId?{...e,...fields}:e);
       } else {
-        const base=EXERCISES.find(e=>e.id===exerciseId);
+        const base=allExercises.find(e=>e.id===exerciseId);
         updated = base?[...prev,{...base,...fields}]:prev;
       }
       save(completions,customRoutines,updated);
@@ -1257,13 +1532,13 @@ export default function App() {
       return updated;
     });
     setActiveWorkout(aw=>aw?{...aw,exercises:aw.exercises.map(e=>e.id===exerciseId?{...e,...fields}:e)}:aw);
-  }, [completions, customRoutines, save, sbSaveCustomExercise]);
+  }, [completions, customRoutines, save, sbSaveCustomExercise, allExercises]);
 
   const startWorkout = useCallback(routine => {
-    const exs=routine.exerciseIds.map(id=>{const ce=customExercises.find(e=>e.id===id);return ce||EXERCISES.find(e=>e.id===id);}).filter(Boolean);
+    const exs=routine.exerciseIds.map(id=>allExercises.find(e=>e.id===id)).filter(Boolean);
     if(!exs.length){showToast("No exercises in this routine");return;}
     setActiveWorkout({routine,exercises:exs});
-  }, [customExercises]);
+  }, [allExercises]);
 
   
 
@@ -1308,13 +1583,6 @@ export default function App() {
     sbSaveCustomRoutine(routine);
   }, [customRoutines, completions, customExercises, save, sbSaveCustomRoutine]);
 
-  const handleAiRoutine = useCallback((label,exerciseIds) => {
-    const exs=exerciseIds.map(id=>EXERCISES.find(e=>e.id===id)).filter(Boolean);
-    if(!exs.length) return;
-    const fakeRoutine={id:`ai-${Date.now()}`,name:"Custom: "+label,type:"Mixed",exerciseIds};
-    setShowAiModal(false); setActiveWorkout({routine:fakeRoutine,exercises:exs});
-  }, []);
-
   const deleteCustomRoutine = useCallback(id => {
     const updated=customRoutines.filter(r=>r.id!==id); setCustomRoutines(updated); save(completions,updated,customExercises);
     showToast("Routine deleted");
@@ -1323,10 +1591,13 @@ export default function App() {
 
   // ── Chart scroll to right ─────────────────────────────────
   useEffect(() => {
-    if (tab === "history" && chartRef.current) {
-      setTimeout(() => { if (chartRef.current) chartRef.current.scrollLeft = chartRef.current.scrollWidth; }, 50);
+    if (tab === "history") {
+      setTimeout(() => {
+        if (chartRef.current) chartRef.current.scrollLeft = chartRef.current.scrollWidth;
+        if (muscleChartRef.current) muscleChartRef.current.scrollLeft = muscleChartRef.current.scrollWidth;
+      }, 50);
     }
-  }, [tab, weeklyData]);
+  }, [tab, weeklyData, muscleWeeklyData]);
 
   if (!loaded) return (
     <>
@@ -1339,7 +1610,7 @@ export default function App() {
     <>
     <style>{DARK_STYLE}</style>
     <div style={{padding:"20px 0"}}>
-      <WorkoutView routine={activeWorkout.routine} exercises={activeWorkout.exercises} onComplete={completeWorkout} onExit={()=>setActiveWorkout(null)} onUpdateExercise={updateExercise} onSaveRoutine={activeWorkout.routine.id?.startsWith("gen-")?saveGeneratedRoutine:null} onSwapExercise={swapWorkoutExercise} exerciseCompletionCounts={exerciseCompletionCounts} exerciseLastCompleted={exerciseLastCompleted}/>
+      <WorkoutView routine={activeWorkout.routine} exercises={activeWorkout.exercises} onComplete={completeWorkout} onExit={()=>setActiveWorkout(null)} onUpdateExercise={updateExercise} onSaveRoutine={activeWorkout.routine.id?.startsWith("gen-")?saveGeneratedRoutine:null} onSwapExercise={swapWorkoutExercise} exerciseCompletionCounts={exerciseCompletionCounts} exerciseLastCompleted={exerciseLastCompleted} allExercises={allExercises} recentExercisesByType={recentExercisesByType}/>
     </div>
     </>
   );
@@ -1349,11 +1620,10 @@ export default function App() {
     <>
     <style>{DARK_STYLE}</style>
     <div style={{maxWidth:660,margin:"0 auto",padding:16,background:DARK.bg,minHeight:"100vh",color:DARK.text}}>
-      {showAiModal && <AiRoutineModal onStart={handleAiRoutine} onClose={()=>setShowAiModal(false)} exerciseCompletionCounts={exerciseCompletionCounts}/>}
       {confirmDelete && <ConfirmDialog message={`Delete ${confirmDelete.label}?`} onConfirm={()=>{confirmDelete.onConfirm();setConfirmDelete(null);}} onCancel={()=>setConfirmDelete(null)}/>}
 
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h1 style={{fontSize:18,fontWeight:600,margin:0,color:'#ffffff'}}>Limber, Mark's Stretching & Mobility App</h1>
+        <h1 style={{fontSize:18,fontWeight:600,margin:0,color:'#ffffff'}}>Mark's Stretching & Mobility App</h1>
         <div style={{fontSize:11,color:DARK.text2,display:"flex",gap:6}}>
           <span>{allExercises.length} exercises</span><span>&#183;</span><span>{completions.length} sessions</span>
         </div>
@@ -1381,6 +1651,10 @@ export default function App() {
       {/* ── ROUTINES TAB ── */}
       {tab==="routines" && (
         <div>
+          <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:10}}>
+            <span style={{fontSize:11,color:DARK.text3}}>How routine generation works</span>
+            <InfoTooltip text={ROUTINE_ALGO_EXPLANATION} />
+          </div>
           {/* Big generate buttons */}
           <div style={{display:"flex",gap:12,marginBottom:24}}>
             {[["Stretching",S_COLOR,"🧘"],["Mobility",M_COLOR,"💪"]].map(([t,color,icon])=>(
@@ -1395,7 +1669,7 @@ export default function App() {
             ))}
           </div>
 
-          {showNewRoutine && <NewRoutineBuilder filterType={routineType} exerciseRoutineCount={exerciseRoutineCount} exerciseCompletionCounts={exerciseCompletionCounts} exerciseLastCompleted={exerciseLastCompleted} recentExercisesByType={recentExercisesByType} onStart={(routine,exs)=>{setShowNewRoutine(false);setActiveWorkout({routine,exercises:exs});}} onClose={()=>setShowNewRoutine(false)}/>}
+          {showNewRoutine && <NewRoutineBuilder filterType={routineType} exerciseRoutineCount={exerciseRoutineCount} exerciseCompletionCounts={exerciseCompletionCounts} exerciseLastCompleted={exerciseLastCompleted} recentExercisesByType={recentExercisesByType} muscleFrequency4wk={muscleFrequency4wk} allExercises={allExercises} onStart={(routine,exs)=>{setShowNewRoutine(false);setActiveWorkout({routine,exercises:exs});}} onClose={()=>setShowNewRoutine(false)}/>}
 
           {/* Collapsible saved routines by type */}
           {[["Stretching",S_COLOR],["Mobility",M_COLOR]].map(([t,color])=>{
@@ -1447,26 +1721,36 @@ export default function App() {
             <button onClick={()=>setShowExercisesToAdd(v=>!v)} style={{padding:"6px 10px",borderRadius:6,fontSize:12,fontWeight:600,background:DARK.bg3,color:DARK.text2,border:"0.5px solid "+DARK.border,cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>&#128203; To Add</button>
           </div>
           <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
-            {[["All","#888"],["Stretching",S_COLOR],["Mobility",M_COLOR]].map(([t,color])=>{
+            {[["All","#888",exerciseCounts.all],["Stretching",S_COLOR,exerciseCounts.Stretching],["Mobility",M_COLOR,exerciseCounts.Mobility]].map(([t,color,cnt])=>{
               const key=t;
               const active=exFilterType===key;
-              return <button key={key} onClick={()=>setExFilterType(key)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:active?color+"22":"none",color:active?color:DARK.text2,border:`0.5px solid ${active?color+"66":DARK.border2}`,cursor:"pointer"}}>{key}</button>;
+              const activeColor = key==="All" ? "#ffffff" : color;
+              return <button key={key} onClick={()=>setExFilterType(key)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:active?activeColor+"22":"none",color:active?activeColor:DARK.text2,border:`0.5px solid ${active?activeColor+"66":DARK.border2}`,cursor:"pointer"}}>{key} ({cnt})</button>;
             })}
             <button onClick={()=>setFilterFav(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterFav?"#E8B84B22":"none",color:filterFav?"#E8B84B":DARK.text2,border:`0.5px solid ${filterFav?"#E8B84B66":DARK.border2}`,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-              <span style={{fontSize:16,color:"#E8B84B",lineHeight:1}}>&#9733;</span> Favorite
+              <span style={{fontSize:16,color:"#E8B84B",lineHeight:1}}>&#9733;</span> Favorite ({exerciseCounts.favorite})
             </button>
             <button onClick={()=>setFilterWorkOn(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterWorkOn?"#E8B84B22":"none",color:filterWorkOn?"#E8B84B":DARK.text2,border:`0.5px solid ${filterWorkOn?"#E8B84B66":DARK.border2}`,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-              <span style={{color:"#E8B84B",fontSize:12,lineHeight:1}}>&#128170;</span> Work On
+              <span style={{color:"#E8B84B",fontSize:12,lineHeight:1}}>&#128170;</span> Work On ({exerciseCounts.workOn})
             </button>
-            <div style={{marginLeft:"auto",display:"flex",gap:4}}>
-              {[["name","A-Z"],["completions","Most Completed"]].map(([val,label])=>(
-                <button key={val} onClick={()=>setExSortBy(val)} style={{padding:"3px 8px",borderRadius:6,fontSize:11,background:exSortBy===val?DARK.text:DARK.bg2,color:exSortBy===val?DARK.bg:DARK.text2,border:"none",cursor:"pointer"}}>{label}</button>
-              ))}
-            </div>
+            <button onClick={()=>setFilterArchived(f=>!f)} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:filterArchived?"#C0000022":"none",color:filterArchived?"#C00000":DARK.text2,border:`0.5px solid ${filterArchived?"#C0000066":DARK.border2}`,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+              <span style={{color:"#C00000",fontSize:12,lineHeight:1}}>&#128451;</span> Archived ({exerciseCounts.archived})
+            </button>
+          </div>
+          <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
+            {[["likelihood",{desc:"Highest Selection Likelihood",asc:"Lowest Selection Likelihood"}],["completions",{desc:"Most Completed",asc:"Least Completed"}]].map(([val,labels])=>{
+              const active = exSortBy===val;
+              const label = active ? labels[exSortDir] : labels.desc;
+              return (
+                <button key={val} onClick={()=>{ if(exSortBy===val){setExSortDir(d=>d==="desc"?"asc":"desc");} else {setExSortBy(val);setExSortDir("desc");} }} style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:active?DARK.text+"22":"none",color:active?DARK.text:DARK.text2,border:`0.5px solid ${active?DARK.text+"66":DARK.border2}`,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+                  {label}<span style={{fontSize:9,visibility:active?"visible":"hidden"}}>{exSortDir==="desc"?"↓":"↑"}</span>
+                </button>
+              );
+            })}
           </div>
           <div style={{marginBottom:12}}>
             <select value={filterRegion} onChange={e=>setFilterRegion(e.target.value)} style={{width:"100%",fontSize:13}}>
-              {regions.map(reg=><option key={reg} value={reg}>{reg==="All"?"Filter by muscle / joint":reg}</option>)}
+              {regions.map(reg=><option key={reg} value={reg}>{reg==="All"?"Filter by muscle / joint":`${reg} (${exerciseCounts.byRegion[reg]||0})`}</option>)}
             </select>
           </div>
 
@@ -1496,6 +1780,7 @@ export default function App() {
                       <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0,flex:1}}>
                         <span style={{fontSize:13,fontWeight:500,lineHeight:1.3}}>{e.name}</span>
                         <span style={{fontSize:10,fontWeight:700,padding:"1px 5px",borderRadius:4,background:e.type==="Stretching"?S_COLOR:M_COLOR,color:"white",flexShrink:0}}>{e.type==="Stretching"?"S":"M"}</span>
+                        {e.archived&&<span style={{fontSize:10,fontWeight:600,padding:"1px 6px",borderRadius:10,background:"#C0000022",color:"#C00000",border:"0.5px solid #C0000066",flexShrink:0}}>Archived</span>}
                       </div>
                       <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
                         {e.favorite==="Favorite"&&<span style={{fontSize:15,color:"#E8B84B",lineHeight:1}}>&#9733;</span>}
@@ -1510,8 +1795,8 @@ export default function App() {
                       {e.reps&&e.type!=="Stretching"&&e.reps!=="N/A"&&<span style={{fontSize:11,color:DARK.text3,alignSelf:"center"}}>{e.reps}</span>}
                     </div>
                   </div>
-                  {sel && <ExerciseInlineEdit e={e} liveCount={exerciseCompletionCounts[e.id]||0} lastDate={exerciseLastCompleted[e.id]||null}
-                    onUpdate={(id,fields)=>{setCustomExercises(p=>{const ex=p.find(x=>x.id===id);const updated=ex?p.map(x=>x.id===id?{...x,...fields}:x):[...p,{...EXERCISES.find(x=>x.id===id),...fields}];save(completions,customRoutines,updated);const saved=updated.find(x=>x.id===id);if(saved)sbSaveCustomExercise(saved);return updated;});}}
+                  {sel && <ExerciseInlineEdit e={e} liveCount={exerciseCompletionCounts[e.id]||0} lastDate={exerciseLastCompleted[e.id]||null} likelihood={selectionLikelihood[e.id]}
+                    onUpdate={(id,fields)=>{setCustomExercises(p=>{const ex=p.find(x=>x.id===id);const updated=ex?p.map(x=>x.id===id?{...x,...fields}:x):[...p,{...allExercises.find(x=>x.id===id),...fields}];save(completions,customRoutines,updated);const saved=updated.find(x=>x.id===id);if(saved)sbSaveCustomExercise(saved);return updated;});}}
                     onDelete={e.id.startsWith('cex-')?()=>setConfirmDelete({label:e.name,onConfirm:()=>{deleteCustomExercise(e.id);setSelectedEx(null);}}):null}
                   />}
                 </div>
@@ -1534,7 +1819,7 @@ export default function App() {
               </div>
             </div>
             {(() => {
-              const chartH=90, barW=36, gap=10, GOAL=4;
+              const chartH=90, barW=22, gap=8, GOAL=4;
               const maxVal=Math.max(...weeklyData.map(w=>w.total),GOAL,1);
               const goalY=Math.round((1-GOAL/maxVal)*chartH);
               const totalW=weeklyData.length*(barW+gap);
@@ -1542,8 +1827,7 @@ export default function App() {
                 <div ref={chartRef} style={{overflowX:"auto",overflowY:"visible",paddingBottom:4}}>
                   <div style={{position:"relative",paddingTop:20,minWidth:totalW}}>
                     <svg style={{position:"absolute",top:20,left:0,width:totalW,height:chartH,pointerEvents:"none",overflow:"visible",zIndex:1}}>
-                      <line x1="0" y1={goalY} x2={totalW} y2={goalY} stroke="#C00000" strokeWidth="1.5" strokeDasharray="6,4" opacity="0.85"/>
-                      <text x="4" y={goalY-3} fontSize="9" fill="#C00000" opacity="0.9">goal (4)</text>
+                      <line x1="0" y1={goalY} x2={totalW} y2={goalY} stroke="#ffffff" strokeWidth="1.5" strokeDasharray="6,4" opacity="0.85"/>
                     </svg>
                     <div style={{display:"flex",alignItems:"flex-end",gap:gap}}>
                       {weeklyData.map((w,i)=>{
@@ -1573,7 +1857,129 @@ export default function App() {
             })()}
           </div>
 
-
+          {/* Muscle / joint load chart */}
+          <div style={{background:DARK.bg2,borderRadius:12,padding:"16px 16px 12px",marginBottom:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <span style={{fontSize:13,fontWeight:500}}>Muscle / joint load</span>
+              <div style={{display:"flex",gap:4}}>
+                {[["line","Line Chart"],["area","Area Chart"]].map(([val,label])=>(
+                  <button key={val} onClick={()=>setMuscleChartMode(val)} style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:500,background:muscleChartMode===val?DARK.text+"22":"none",color:muscleChartMode===val?DARK.text:DARK.text2,border:`0.5px solid ${muscleChartMode===val?DARK.text+"66":DARK.border2}`,cursor:"pointer"}}>{label}</button>
+                ))}
+              </div>
+            </div>
+            {muscleWeeklyData.tags.length===0
+              ? <div style={{fontSize:12,color:DARK.text3}}>No completions yet.</div>
+              : (() => {
+                  const chartH=260, step=30; // matches the weekly sessions chart's bar+gap width
+                  const totalW = muscleWeeklyData.weeks.length*step;
+                  const activeSet = selectedMuscleTags.size>0 ? selectedMuscleTags : null;
+                  const showEveryLabel = muscleWeeklyData.weeks.length <= 15;
+                  // Fixed (not weight-sorted) stacking order so bands don't reorder as data changes.
+                  const stackOrder = ZONE_ORDER.flatMap(z => ZONE_CATEGORIES[z]).filter(t => muscleWeeklyData.tags.includes(t));
+                  // % is always of the FULL category total (not just what's selected), so a
+                  // filtered view shows exactly the slice those categories represent of the
+                  // whole — the scale never re-normalizes to fill 100% when you narrow it down.
+                  const weekTotals = muscleWeeklyData.weeks.map(w => muscleWeeklyData.tags.reduce((s,t)=>s+(w.tagTotals[t]||0),0));
+                  const cumRunning = new Array(muscleWeeklyData.weeks.length).fill(0);
+                  const bands = stackOrder.filter(t => !activeSet || activeSet.has(t)).map(tag => {
+                    const bottomArr = [...cumRunning];
+                    const topArr = muscleWeeklyData.weeks.map((w,i) => {
+                      const pct = weekTotals[i]>0 ? (w.tagTotals[tag]||0)/weekTotals[i]*100 : 0;
+                      cumRunning[i] += pct;
+                      return cumRunning[i];
+                    });
+                    return { tag, bottomArr, topArr };
+                  });
+                  // Line mode: scale is always based on the full dataset so it never rescales when you select a subset.
+                  const maxVal = Math.max(1, ...muscleWeeklyData.weeks.flatMap(w=>muscleWeeklyData.tags.map(t=>w.tagTotals[t]||0)));
+                  const toggleTag = tag => setSelectedMuscleTags(prev => { const next=new Set(prev); if(next.has(tag)) next.delete(tag); else next.add(tag); return next; });
+                  const toggleZone = zone => {
+                    const zoneTags = muscleWeeklyData.tags.filter(t=>MUSCLE_GROUP_ZONE[t]===zone);
+                    setSelectedMuscleTags(prev => {
+                      const next = new Set(prev);
+                      const allIn = zoneTags.length>0 && zoneTags.every(t=>next.has(t));
+                      zoneTags.forEach(t => allIn ? next.delete(t) : next.add(t));
+                      return next;
+                    });
+                  };
+                  return (
+                    <>
+                      <div style={{height:16,fontSize:11,fontWeight:600,color:DARK.text,marginBottom:4}}>{hoveredMuscleTag||" "}</div>
+                      <div ref={muscleChartRef} style={{overflowX:"auto",overflowY:"visible",paddingBottom:4}}>
+                        <div style={{position:"relative",minWidth:totalW}}>
+                          <svg width={totalW} height={chartH} style={{display:"block",overflow:"visible"}}>
+                            {muscleChartMode==="area"
+                              ? bands.map(({tag,bottomArr,topArr}) => {
+                                  const isHovered = hoveredMuscleTag===tag;
+                                  const dimByHover = hoveredMuscleTag && !isHovered;
+                                  const color = muscleGroupColor(tag);
+                                  const topPts = topArr.map((pct,i) => `${i*step+step/2},${chartH-(pct/100)*chartH}`);
+                                  const bottomPts = bottomArr.map((pct,i) => `${i*step+step/2},${chartH-(pct/100)*chartH}`).reverse();
+                                  const points = [...topPts, ...bottomPts].join(" ");
+                                  return (
+                                    <polygon key={tag} points={points} fill={color} opacity={dimByHover?0.3:(isHovered?1:0.9)} stroke={isHovered?"#fff":"none"} strokeWidth={isHovered?1:0} style={{cursor:"pointer"}} onMouseEnter={()=>setHoveredMuscleTag(tag)} onMouseLeave={()=>setHoveredMuscleTag(h=>h===tag?null:h)} onClick={()=>toggleTag(tag)}/>
+                                  );
+                                })
+                              : muscleWeeklyData.tags.map((tag) => {
+                                  if (activeSet && !activeSet.has(tag)) return null;
+                                  const isHovered = hoveredMuscleTag===tag;
+                                  const dimByHover = hoveredMuscleTag && !isHovered;
+                                  const color = dimByHover ? "#666" : muscleGroupColor(tag);
+                                  const points = muscleWeeklyData.weeks.map((w,i) => {
+                                    const x = i*step + step/2;
+                                    const v = w.tagTotals[tag]||0;
+                                    const y = chartH - Math.min(chartH,(v/maxVal)*chartH);
+                                    return `${x},${y}`;
+                                  }).join(" ");
+                                  return (
+                                    <g key={tag}>
+                                      <polyline points={points} fill="none" stroke={color} strokeWidth={isHovered?3:(activeSet?2.5:1.5)} opacity={dimByHover?0.25:(activeSet?1:0.7)} strokeLinejoin="round" strokeLinecap="round"/>
+                                      {/* Wide invisible hit-area so hovering the line doesn't require pixel-precision */}
+                                      <polyline points={points} fill="none" stroke={color} strokeWidth={14} strokeOpacity={0} strokeLinejoin="round" strokeLinecap="round" style={{cursor:"pointer"}} onMouseEnter={()=>setHoveredMuscleTag(tag)} onMouseLeave={()=>setHoveredMuscleTag(h=>h===tag?null:h)} onClick={()=>toggleTag(tag)}/>
+                                    </g>
+                                  );
+                                })
+                            }
+                          </svg>
+                          <div style={{display:"flex"}}>
+                            {muscleWeeklyData.weeks.map((w,i)=>(
+                              <div key={i} style={{width:step,flexShrink:0,textAlign:"center",fontSize:9,color:DARK.text3,marginTop:5,whiteSpace:"nowrap"}}>{showEveryLabel||i%2===0?w.label:""}</div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      {ZONE_ORDER.map((zone,zi) => {
+                        const zoneTags = muscleWeeklyData.tags.filter(t=>MUSCLE_GROUP_ZONE[t]===zone);
+                        if (zoneTags.length===0) return null;
+                        const zoneColor = ZONE_COLOR[zone];
+                        const allSelected = zoneTags.every(t=>selectedMuscleTags.has(t));
+                        const isLastRow = zi===ZONE_ORDER.length-1;
+                        return (
+                          <div key={zone} style={{display:"grid",gridTemplateColumns:"96px 1fr",gap:12,alignItems:"center",marginTop:10}}>
+                            <button onClick={()=>toggleZone(zone)} style={{padding:"2px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:allSelected?zoneColor+"33":"none",border:`0.5px solid ${zoneColor}88`,color:zoneColor,cursor:"pointer",whiteSpace:"nowrap"}}>
+                              {ZONE_LABEL[zone]}
+                            </button>
+                            <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                              {zoneTags.map(tag => {
+                                const selected = selectedMuscleTags.has(tag);
+                                return (
+                                  <button key={tag} onClick={()=>toggleTag(tag)} onMouseEnter={()=>setHoveredMuscleTag(tag)} onMouseLeave={()=>setHoveredMuscleTag(h=>h===tag?null:h)} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:20,fontSize:10,background:selected?zoneColor+"33":"none",border:`0.5px solid ${zoneColor}88`,color:DARK.text2,cursor:"pointer"}}>
+                                    <span style={{width:8,height:8,borderRadius:"50%",background:zoneColor,flexShrink:0}}/>{tag}
+                                  </button>
+                                );
+                              })}
+                              {isLastRow && (
+                                <button onClick={()=>setSelectedMuscleTags(new Set())} disabled={selectedMuscleTags.size===0} style={{marginLeft:"auto",padding:"3px 12px",borderRadius:6,fontSize:11,background:"none",border:"0.5px solid "+DARK.border2,color:selectedMuscleTags.size===0?DARK.text3:DARK.text2,cursor:selectedMuscleTags.size===0?"default":"pointer"}}>Clear</button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  );
+                })()
+            }
+          </div>
 
           {/* Add + table */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -1631,10 +2037,12 @@ export default function App() {
                             </div>
                             <div style={{flex:1,minWidth:120}}>
                               <div style={{fontSize:10,color:DARK.text2,marginBottom:3}}>Routine</div>
-                              <select value={editCompletionFields.routineId||""} onChange={ev=>{const genNames={"gen-s":"S (generated)","gen-m":"M (generated)"};const r2=allRoutines.find(r=>r.id===ev.target.value);setEditCompletionFields(p=>({...p,routineId:ev.target.value,routineName:r2?.name||genNames[ev.target.value]||p.routineName}));}} style={{width:"100%",fontSize:12}}>
-                                {sortRoutines(allRoutines).map(r2=><option key={r2.id} value={r2.id}>{r2.name}</option>)}
+                              <select value={editCompletionFields.routineId||""} onChange={ev=>{const sentinels={"gen-s":{name:"S (generated)",type:"Stretching"},"gen-m":{name:"M (generated)",type:"Mobility"},"custom-s":{name:CUSTOM_COMPLETION_OPTIONS["custom-s"].name,type:"Stretching"},"custom-m":{name:CUSTOM_COMPLETION_OPTIONS["custom-m"].name,type:"Mobility"}};const r2=allRoutines.find(r=>r.id===ev.target.value);const s=sentinels[ev.target.value];setEditCompletionFields(p=>({...p,routineId:ev.target.value,routineName:r2?.name||s?.name||p.routineName,routineType:r2?.type||s?.type||p.routineType}));}} style={{width:"100%",fontSize:12}}>
                                 <option value="gen-s" style={{background:DARK.bg3}}>S (generated)</option>
                                 <option value="gen-m" style={{background:DARK.bg3}}>M (generated)</option>
+                                <option value="custom-s" style={{background:DARK.bg3}}>S (custom)</option>
+                                <option value="custom-m" style={{background:DARK.bg3}}>M (custom)</option>
+                                {sortRoutines(allRoutines).map(r2=><option key={r2.id} value={r2.id}>{r2.name}</option>)}
                               </select>
                             </div>
                             <div style={{display:"flex",gap:6}}>
