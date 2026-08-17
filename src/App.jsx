@@ -1261,6 +1261,11 @@ export default function App() {
 
   const allRoutines = useMemo(() => sortRoutines([...ROUTINES_BASE, ...customRoutines]), [customRoutines]);
 
+  // History table is always shown newest-first by date, regardless of insertion order — so a
+  // completion manually added for a past date lands in its correct chronological spot instead
+  // of jumping to the top just because it was added most recently.
+  const sortedCompletions = useMemo(() => [...completions].sort((a,b) => b.date.localeCompare(a.date)), [completions]);
+
   const recentExercisesByType = useMemo(() => {
     const result = { Stretching: { last3: new Set(), last6: new Set() }, Mobility: { last3: new Set(), last6: new Set() } };
     ["Stretching","Mobility"].forEach(type => {
@@ -1623,7 +1628,7 @@ export default function App() {
       {confirmDelete && <ConfirmDialog message={`Delete ${confirmDelete.label}?`} onConfirm={()=>{confirmDelete.onConfirm();setConfirmDelete(null);}} onCancel={()=>setConfirmDelete(null)}/>}
 
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h1 style={{fontSize:18,fontWeight:600,margin:0,color:'#ffffff'}}>Mark's Stretching & Mobility App</h1>
+        <h1 style={{fontSize:18,fontWeight:600,margin:0,color:'#ffffff'}}>Stretching & Mobility</h1>
         <div style={{fontSize:11,color:DARK.text2,display:"flex",gap:6}}>
           <span>{allExercises.length} exercises</span><span>&#183;</span><span>{completions.length} sessions</span>
         </div>
@@ -1997,7 +2002,7 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {completions.map((c,idx)=>{
+                {sortedCompletions.map((c,idx)=>{
                   const r=allRoutines.find(rt=>rt.id===c.routineId);
                   const typeColor=r?.type==="Stretching"?S_COLOR:M_COLOR;
                   return (
