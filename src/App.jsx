@@ -554,8 +554,8 @@ function WorkoutView({ routine, exercises, onComplete, onExit, onUpdateExercise,
 
 // ── AddCompletionForm ─────────────────────────────────────────
 const CUSTOM_COMPLETION_OPTIONS = {
-  "custom-s": { name: "Custom Stretching (no routine)", type: "Stretching" },
-  "custom-m": { name: "Custom Mobility (no routine)", type: "Mobility" },
+  "custom-s": { name: "S (custom)", type: "Stretching" },
+  "custom-m": { name: "M (custom)", type: "Mobility" },
 };
 
 function AddCompletionForm({ allRoutines, onAdd, onClose }) {
