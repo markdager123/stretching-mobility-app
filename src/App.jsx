@@ -43,6 +43,11 @@ const DARK = {
 const SUPABASE_URL = "https://uhatnqbqzbtnsqscocdz.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVoYXRucWJxemJ0bnNxc2NvY2R6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5MDEzNTcsImV4cCI6MjA5MjQ3NzM1N30.Wiir3TzuFLXM9SCgej3QHEG2JVUdjuuf5qvd7DFtMwU";
 
+// Supabase table names (the tables were renamed with a "Stretching_" prefix in the dashboard).
+const SB_COMPLETIONS = "Stretching_completions";
+const SB_CUSTOM_ROUTINES = "Stretching_custom_routines";
+const SB_CUSTOM_EXERCISES = "Stretching_custom_exercises";
+
 async function sbFetch(path, options = {}) {
   const res = await fetch(SUPABASE_URL + "/rest/v1/" + path, {
     ...options,
@@ -1041,9 +1046,9 @@ export default function App() {
       try {
         // Load from Supabase
         const [cmps, crs, ces] = await Promise.all([
-          sbFetch("completions?order=date.desc"),
-          sbFetch("custom_routines?order=created_at.asc"),
-          sbFetch("custom_exercises?order=created_at.asc"),
+          sbFetch(SB_COMPLETIONS + "?order=date.desc"),
+          sbFetch(SB_CUSTOM_ROUTINES + "?order=created_at.asc"),
+          sbFetch(SB_CUSTOM_EXERCISES + "?order=created_at.asc"),
         ]);
 
         // Map Supabase snake_case to app camelCase
@@ -1062,12 +1067,33 @@ export default function App() {
           exerciseIds: r.exercise_ids || [],
           isCustom: true,
         }));
-        const mappedCes = ces.map(e => e.data);
+        let mappedCes = ces.map(e => e.data);
+
+        // Anything in this browser's local cache that never reached Supabase (e.g. logged while
+        // Supabase was unreachable, since sync failures are silent) gets merged in and uploaded
+        // now, instead of being wiped when the cache is overwritten below.
+        const supabaseIds = new Set(mappedCmps.map(c => c.id));
+        let localOnlyCmps = [];
+        try {
+          const cached = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+          localOnlyCmps = (cached?.completions || []).filter(c => c?.id && !c.id.startsWith("h-") && !supabaseIds.has(c.id));
+          const sbExIds = new Set(mappedCes.map(e => e?.id));
+          const localOnlyCes = (cached?.customExercises || []).filter(e => e?.id && !sbExIds.has(e.id));
+          localOnlyCmps.forEach(c => sbFetch(SB_COMPLETIONS, {
+            method: "POST", prefer: "resolution=merge-duplicates,return=minimal",
+            body: JSON.stringify({ id: c.id, routine_id: c.routineId, routine_name: c.routineName, routine_type: c.routineType || "", date: c.date, exercise_ids: c.exerciseIds || [] }),
+          }).catch(e => console.warn("Supabase sync failed:", e.message)));
+          localOnlyCes.forEach(e => sbFetch(SB_CUSTOM_EXERCISES, {
+            method: "POST", prefer: "resolution=merge-duplicates,return=minimal",
+            body: JSON.stringify({ id: e.id, data: e }),
+          }).catch(err => console.warn("Supabase sync failed:", err.message)));
+          mappedCes = [...mappedCes, ...localOnlyCes];
+        } catch(e) {}
 
         // Merge with HISTORY_SEED: Supabase completions take priority
-        const supabaseIds = new Set(mappedCmps.map(c => c.id));
+        localOnlyCmps.forEach(c => supabaseIds.add(c.id));
         const seedOnly = HISTORY_SEED.filter(c => !supabaseIds.has(c.id));
-        const allCompletions = [...mappedCmps, ...seedOnly]
+        const allCompletions = [...mappedCmps, ...localOnlyCmps, ...seedOnly]
           .sort((a, b) => b.date.localeCompare(a.date));
 
         if (allCompletions.length) setCompletions(allCompletions);
@@ -1109,7 +1135,7 @@ export default function App() {
   // Supabase sync helpers — called after local state updates
   const sbSaveCompletion = useCallback(async (c) => {
     try {
-      await sbFetch("completions", {
+      await sbFetch(SB_COMPLETIONS, {
         method: "POST",
         prefer: "resolution=merge-duplicates,return=minimal",
         body: JSON.stringify({
@@ -1128,7 +1154,7 @@ export default function App() {
     // Don't delete HISTORY_SEED items from Supabase (they were never written there)
     if (id.startsWith("h-")) return;
     try {
-      await sbFetch("completions?id=eq." + encodeURIComponent(id), {
+      await sbFetch(SB_COMPLETIONS + "?id=eq." + encodeURIComponent(id), {
         method: "DELETE",
         prefer: "return=minimal",
       });
@@ -1137,7 +1163,7 @@ export default function App() {
 
   const sbSaveCustomRoutine = useCallback(async (r) => {
     try {
-      await sbFetch("custom_routines", {
+      await sbFetch(SB_CUSTOM_ROUTINES, {
         method: "POST",
         prefer: "resolution=merge-duplicates,return=minimal",
         body: JSON.stringify({
@@ -1152,7 +1178,7 @@ export default function App() {
 
   const sbDeleteCustomRoutine = useCallback(async (id) => {
     try {
-      await sbFetch("custom_routines?id=eq." + encodeURIComponent(id), {
+      await sbFetch(SB_CUSTOM_ROUTINES + "?id=eq." + encodeURIComponent(id), {
         method: "DELETE",
         prefer: "return=minimal",
       });
@@ -1161,7 +1187,7 @@ export default function App() {
 
   const sbSaveCustomExercise = useCallback(async (e) => {
     try {
-      await sbFetch("custom_exercises", {
+      await sbFetch(SB_CUSTOM_EXERCISES, {
         method: "POST",
         prefer: "resolution=merge-duplicates,return=minimal",
         body: JSON.stringify({ id: e.id, data: e }),
