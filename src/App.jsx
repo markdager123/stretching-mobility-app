@@ -242,65 +242,10 @@ const REGION_COLORS = {
   "Calves":"#52A882","Tibialis":"#52A882","Achilles":"#52A882","Ankles":"#52A882","Feet":"#52A882"
 };
 
-// Groups the granular muscle/joint tags into 8 broader categories for the Muscle/joint load
-// chart (fewer lines to read). Any tag not listed here maps to itself.
-const MUSCLE_GROUP_MAP = {
-  "Neck":"Upper Back/Neck", "Upper/Mid Back":"Upper Back/Neck", "Back":"Upper Back/Neck", "Lats":"Upper Back/Neck", "Spine":"Upper Back/Neck",
-  "Shoulders":"Shoulders/Chest", "Chest":"Shoulders/Chest",
-  "Biceps":"Arms/Wrist", "Triceps":"Arms/Wrist", "Arms":"Arms/Wrist", "Forearms":"Arms/Wrist", "Wrist":"Arms/Wrist",
-  "Core":"Core/Lower Back", "Abs":"Core/Lower Back", "Obliques":"Core/Lower Back", "Lower Back":"Core/Lower Back",
-  "Hip Flexors":"Hips", "Groin":"Hips",
-  "Glutes":"Hamstrings/Glutes", "Abductors":"Hamstrings/Glutes", "Hamstrings":"Hamstrings/Glutes",
-  "Adductors":"Knees/Quads", "Quads":"Knees/Quads", "Knees":"Knees/Quads",
-  "Calves":"Ankles/Feet", "Tibialis":"Ankles/Feet", "Achilles":"Ankles/Feet", "Ankles":"Ankles/Feet", "Feet":"Ankles/Feet",
-};
-function muscleGroupOf(tag) { return MUSCLE_GROUP_MAP[tag] || tag; }
-
-// Which of the app's 3 existing zone colors (see REGION_COLORS) each grouped category belongs
-// to, used to lay the chart legend out in 3 rows.
-const MUSCLE_GROUP_ZONE = {
-  "Shoulders/Chest":"upper", "Upper Back/Neck":"upper", "Arms/Wrist":"upper",
-  "Core/Lower Back":"core", "Hips":"core",
-  "Hamstrings/Glutes":"lower", "Knees/Quads":"lower", "Ankles/Feet":"lower",
-};
-const ZONE_LABEL = { upper: "Upper Body", core: "Core", lower: "Lower Body" };
-const ZONE_ORDER = ["upper","core","lower"];
-const ZONE_COLOR = { upper: REGION_COLORS["Shoulders"], core: REGION_COLORS["Core"], lower: REGION_COLORS["Quads"] };
-
-// Fixed (not weight-sorted) per-zone category order, so each category always gets the same
-// shade regardless of how the data changes — e.g. Hips is always the lighter blue, never
-// swapping shades with Core/Lower Back depending on which has more load this week.
-const ZONE_CATEGORIES = {
-  upper: ["Upper Back/Neck","Shoulders/Chest","Arms/Wrist"],
-  core: ["Core/Lower Back","Hips"],
-  lower: ["Ankles/Feet","Knees/Quads","Hamstrings/Glutes"],
-};
-
-// Blends a hex color toward white (amount > 0) or black (amount < 0).
-function shade(hex, amount) {
-  const num = parseInt(hex.slice(1),16);
-  let r=(num>>16)&255, g=(num>>8)&255, b=num&255;
-  if (amount >= 0) { r+=(255-r)*amount; g+=(255-g)*amount; b+=(255-b)*amount; }
-  else { r*=(1+amount); g*=(1+amount); b*=(1+amount); }
-  const clamp = v => Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,"0");
-  return `#${clamp(r)}${clamp(g)}${clamp(b)}`;
-}
-
-// Each category gets a different shade of its zone's color — dark for the first in the zone's
-// fixed order, light for the last — so a stacked chart can tell same-zone categories apart.
-function muscleGroupColor(group) {
-  const zone = MUSCLE_GROUP_ZONE[group];
-  const list = ZONE_CATEGORIES[zone] || [group];
-  const idx = Math.max(0, list.indexOf(group));
-  const n = list.length;
-  const shadeAmount = n<=1 ? 0 : -0.35 + 0.7*(idx/(n-1)); // -0.35 (dark) → +0.35 (light)
-  return shade(ZONE_COLOR[zone]||"#888888", shadeAmount);
-}
-
 const POSITION_ORDER = ["Standing","Kneeling","Sitting","On Back","On Stomach"];
 
-// Monday-start week boundaries, oldest → newest, ending with the current week. Shared by the
-// Weekly sessions and Muscle/joint load charts so both scroll over the exact same weeks.
+// Monday-start week boundaries, oldest → newest, ending with the current week. Used by the
+// Weekly sessions chart.
 function getWeekBoundaries(count) {
   const todayPST = new Date().toLocaleDateString("en-CA",{timeZone:"America/Los_Angeles"});
   const today = new Date(todayPST+"T00:00:00");
@@ -1110,10 +1055,6 @@ export default function App() {
   const [editCompletionFields, setEditCompletionFields] = useState({});
   const [confirmDelete, setConfirmDelete] = useState(null); // {type, id, label}
   const chartRef = useRef(null);
-  const muscleChartRef = useRef(null);
-  const [selectedMuscleTags, setSelectedMuscleTags] = useState(() => new Set()); // empty = show all
-  const [hoveredMuscleTag, setHoveredMuscleTag] = useState(null);
-  const [muscleChartMode, setMuscleChartMode] = useState("line"); // "line" | "area"
 
   useEffect(() => {
     async function loadFromSupabase() {
@@ -1521,7 +1462,7 @@ export default function App() {
     return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
   }, [completions]);
 
-  // How many Monday-start weeks back the two history charts should scroll: from the week of
+  // How many Monday-start weeks back the Weekly sessions chart should scroll: from the week of
   // the earliest completion in the dataset up through the current week. Falls back to 24 if
   // there's no history yet.
   const weekCount = useMemo(() => {
@@ -1542,53 +1483,6 @@ export default function App() {
       return {label,stretching,mobility,total:stretching+mobility};
     });
   }, [completions, allRoutines, weekCount]);
-
-  // Weighted muscle/joint-group workload, broken down by week, over the full scrollable
-  // history — same weighting as muscleFrequency4wk (1st tag on an exercise counts full, 2nd
-  // half, 3rd a quarter...), combined across Stretching + Mobility, and grouped into broader
-  // categories (see MUSCLE_GROUP_MAP) to keep the chart to a manageable number of lines. Each
-  // week's value is a trailing 4-week rolling sum (same window the generator itself uses), not
-  // just that single week's completions, so the line reflects ongoing load, not one-week spikes.
-  const muscleWeeklyData = useMemo(() => {
-    const boundaries = getWeekBoundaries(weekCount);
-    const rawWeeks = boundaries.map(({ws,we}) => {
-      const groupTotals = {};
-      completions.filter(c=>c.date>=ws&&c.date<=we).forEach(c => {
-        const r = allRoutines.find(rt=>rt.id===c.routineId);
-        const type = r?.type || c.routineType;
-        if (type!=="Stretching" && type!=="Mobility") return;
-        const ids = c.exerciseIds?.length>0 ? c.exerciseIds : (r?.exerciseIds||[]);
-        ids.forEach(id => {
-          const ex = allExercises.find(e=>e.id===id);
-          if (!ex) return;
-          const weights = getMuscleTagWeights(ex);
-          Object.entries(weights).forEach(([tag,wt]) => {
-            const group = muscleGroupOf(tag);
-            groupTotals[group] = (groupTotals[group]||0)+wt;
-          });
-        });
-      });
-      return groupTotals;
-    });
-    const allGroups = new Set();
-    rawWeeks.forEach(g => Object.keys(g).forEach(t=>allGroups.add(t)));
-    const weeks = boundaries.map(({label}, i) => {
-      const start = Math.max(0, i-3); // trailing 4 weeks (this week + up to 3 prior)
-      const tagTotals = {};
-      allGroups.forEach(group => {
-        let sum = 0;
-        for (let j=start; j<=i; j++) sum += rawWeeks[j][group]||0;
-        tagTotals[group] = sum;
-      });
-      return { label, tagTotals };
-    });
-    const tags = Array.from(allGroups).sort((a,b) => {
-      const totalA = weeks.reduce((s,w)=>s+(w.tagTotals[a]||0), 0);
-      const totalB = weeks.reduce((s,w)=>s+(w.tagTotals[b]||0), 0);
-      return totalB - totalA;
-    });
-    return { weeks, tags };
-  }, [completions, allRoutines, allExercises, weekCount]);
 
  // For each type, compute which exercise IDs appeared in the last N completions
   const logCompletion = useCallback((routine, exerciseIds) => {
@@ -1686,10 +1580,9 @@ export default function App() {
     if (tab === "history") {
       setTimeout(() => {
         if (chartRef.current) chartRef.current.scrollLeft = chartRef.current.scrollWidth;
-        if (muscleChartRef.current) muscleChartRef.current.scrollLeft = muscleChartRef.current.scrollWidth;
       }, 50);
     }
-  }, [tab, weeklyData, muscleWeeklyData]);
+  }, [tab, weeklyData]);
 
   if (!loaded) return (
     <>
@@ -1949,130 +1842,6 @@ export default function App() {
                 </div>
               );
             })()}
-          </div>
-
-          {/* Muscle / joint load chart */}
-          <div style={{background:DARK.bg2,borderRadius:12,padding:"16px 16px 12px",marginBottom:20}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <span style={{fontSize:13,fontWeight:500}}>Muscle / joint load</span>
-              <div style={{display:"flex",gap:4}}>
-                {[["line","Line Chart"],["area","Area Chart"]].map(([val,label])=>(
-                  <button key={val} onClick={()=>setMuscleChartMode(val)} style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:500,background:muscleChartMode===val?DARK.text+"22":"none",color:muscleChartMode===val?DARK.text:DARK.text2,border:`0.5px solid ${muscleChartMode===val?DARK.text+"66":DARK.border2}`,cursor:"pointer"}}>{label}</button>
-                ))}
-              </div>
-            </div>
-            {muscleWeeklyData.tags.length===0
-              ? <div style={{fontSize:12,color:DARK.text3}}>No completions yet.</div>
-              : (() => {
-                  const chartH=260, step=30; // matches the weekly sessions chart's bar+gap width
-                  const totalW = muscleWeeklyData.weeks.length*step;
-                  const activeSet = selectedMuscleTags.size>0 ? selectedMuscleTags : null;
-                  const showEveryLabel = muscleWeeklyData.weeks.length <= 15;
-                  // Fixed (not weight-sorted) stacking order so bands don't reorder as data changes.
-                  const stackOrder = ZONE_ORDER.flatMap(z => ZONE_CATEGORIES[z]).filter(t => muscleWeeklyData.tags.includes(t));
-                  // % is always of the FULL category total (not just what's selected), so a
-                  // filtered view shows exactly the slice those categories represent of the
-                  // whole — the scale never re-normalizes to fill 100% when you narrow it down.
-                  const weekTotals = muscleWeeklyData.weeks.map(w => muscleWeeklyData.tags.reduce((s,t)=>s+(w.tagTotals[t]||0),0));
-                  const cumRunning = new Array(muscleWeeklyData.weeks.length).fill(0);
-                  const bands = stackOrder.filter(t => !activeSet || activeSet.has(t)).map(tag => {
-                    const bottomArr = [...cumRunning];
-                    const topArr = muscleWeeklyData.weeks.map((w,i) => {
-                      const pct = weekTotals[i]>0 ? (w.tagTotals[tag]||0)/weekTotals[i]*100 : 0;
-                      cumRunning[i] += pct;
-                      return cumRunning[i];
-                    });
-                    return { tag, bottomArr, topArr };
-                  });
-                  // Line mode: scale is always based on the full dataset so it never rescales when you select a subset.
-                  const maxVal = Math.max(1, ...muscleWeeklyData.weeks.flatMap(w=>muscleWeeklyData.tags.map(t=>w.tagTotals[t]||0)));
-                  const toggleTag = tag => setSelectedMuscleTags(prev => { const next=new Set(prev); if(next.has(tag)) next.delete(tag); else next.add(tag); return next; });
-                  const toggleZone = zone => {
-                    const zoneTags = muscleWeeklyData.tags.filter(t=>MUSCLE_GROUP_ZONE[t]===zone);
-                    setSelectedMuscleTags(prev => {
-                      const next = new Set(prev);
-                      const allIn = zoneTags.length>0 && zoneTags.every(t=>next.has(t));
-                      zoneTags.forEach(t => allIn ? next.delete(t) : next.add(t));
-                      return next;
-                    });
-                  };
-                  return (
-                    <>
-                      <div style={{height:16,fontSize:11,fontWeight:600,color:DARK.text,marginBottom:4}}>{hoveredMuscleTag||" "}</div>
-                      <div ref={muscleChartRef} style={{overflowX:"auto",overflowY:"visible",paddingBottom:4}}>
-                        <div style={{position:"relative",minWidth:totalW}}>
-                          <svg width={totalW} height={chartH} style={{display:"block",overflow:"visible"}}>
-                            {muscleChartMode==="area"
-                              ? bands.map(({tag,bottomArr,topArr}) => {
-                                  const isHovered = hoveredMuscleTag===tag;
-                                  const dimByHover = hoveredMuscleTag && !isHovered;
-                                  const color = muscleGroupColor(tag);
-                                  const topPts = topArr.map((pct,i) => `${i*step+step/2},${chartH-(pct/100)*chartH}`);
-                                  const bottomPts = bottomArr.map((pct,i) => `${i*step+step/2},${chartH-(pct/100)*chartH}`).reverse();
-                                  const points = [...topPts, ...bottomPts].join(" ");
-                                  return (
-                                    <polygon key={tag} points={points} fill={color} opacity={dimByHover?0.3:(isHovered?1:0.9)} stroke={isHovered?"#fff":"none"} strokeWidth={isHovered?1:0} style={{cursor:"pointer"}} onMouseEnter={()=>setHoveredMuscleTag(tag)} onMouseLeave={()=>setHoveredMuscleTag(h=>h===tag?null:h)} onClick={()=>toggleTag(tag)}/>
-                                  );
-                                })
-                              : muscleWeeklyData.tags.map((tag) => {
-                                  if (activeSet && !activeSet.has(tag)) return null;
-                                  const isHovered = hoveredMuscleTag===tag;
-                                  const dimByHover = hoveredMuscleTag && !isHovered;
-                                  const color = dimByHover ? "#666" : muscleGroupColor(tag);
-                                  const points = muscleWeeklyData.weeks.map((w,i) => {
-                                    const x = i*step + step/2;
-                                    const v = w.tagTotals[tag]||0;
-                                    const y = chartH - Math.min(chartH,(v/maxVal)*chartH);
-                                    return `${x},${y}`;
-                                  }).join(" ");
-                                  return (
-                                    <g key={tag}>
-                                      <polyline points={points} fill="none" stroke={color} strokeWidth={isHovered?3:(activeSet?2.5:1.5)} opacity={dimByHover?0.25:(activeSet?1:0.7)} strokeLinejoin="round" strokeLinecap="round"/>
-                                      {/* Wide invisible hit-area so hovering the line doesn't require pixel-precision */}
-                                      <polyline points={points} fill="none" stroke={color} strokeWidth={14} strokeOpacity={0} strokeLinejoin="round" strokeLinecap="round" style={{cursor:"pointer"}} onMouseEnter={()=>setHoveredMuscleTag(tag)} onMouseLeave={()=>setHoveredMuscleTag(h=>h===tag?null:h)} onClick={()=>toggleTag(tag)}/>
-                                    </g>
-                                  );
-                                })
-                            }
-                          </svg>
-                          <div style={{display:"flex"}}>
-                            {muscleWeeklyData.weeks.map((w,i)=>(
-                              <div key={i} style={{width:step,flexShrink:0,textAlign:"center",fontSize:9,color:DARK.text3,marginTop:5,whiteSpace:"nowrap"}}>{showEveryLabel||i%2===0?w.label:""}</div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      {ZONE_ORDER.map((zone,zi) => {
-                        const zoneTags = muscleWeeklyData.tags.filter(t=>MUSCLE_GROUP_ZONE[t]===zone);
-                        if (zoneTags.length===0) return null;
-                        const zoneColor = ZONE_COLOR[zone];
-                        const allSelected = zoneTags.every(t=>selectedMuscleTags.has(t));
-                        const isLastRow = zi===ZONE_ORDER.length-1;
-                        return (
-                          <div key={zone} style={{display:"grid",gridTemplateColumns:"96px 1fr",gap:12,alignItems:"center",marginTop:10}}>
-                            <button onClick={()=>toggleZone(zone)} style={{padding:"2px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:allSelected?zoneColor+"33":"none",border:`0.5px solid ${zoneColor}88`,color:zoneColor,cursor:"pointer",whiteSpace:"nowrap"}}>
-                              {ZONE_LABEL[zone]}
-                            </button>
-                            <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                              {zoneTags.map(tag => {
-                                const selected = selectedMuscleTags.has(tag);
-                                return (
-                                  <button key={tag} onClick={()=>toggleTag(tag)} onMouseEnter={()=>setHoveredMuscleTag(tag)} onMouseLeave={()=>setHoveredMuscleTag(h=>h===tag?null:h)} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:20,fontSize:10,background:selected?zoneColor+"33":"none",border:`0.5px solid ${zoneColor}88`,color:DARK.text2,cursor:"pointer"}}>
-                                    <span style={{width:8,height:8,borderRadius:"50%",background:zoneColor,flexShrink:0}}/>{tag}
-                                  </button>
-                                );
-                              })}
-                              {isLastRow && (
-                                <button onClick={()=>setSelectedMuscleTags(new Set())} disabled={selectedMuscleTags.size===0} style={{marginLeft:"auto",padding:"3px 12px",borderRadius:6,fontSize:11,background:"none",border:"0.5px solid "+DARK.border2,color:selectedMuscleTags.size===0?DARK.text3:DARK.text2,cursor:selectedMuscleTags.size===0?"default":"pointer"}}>Clear</button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </>
-                  );
-                })()
-            }
           </div>
 
           {/* Add + table */}
